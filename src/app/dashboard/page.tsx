@@ -54,7 +54,12 @@ export default function AdminDashboardPage() {
         }
         const data = await res.json();
         if (!isCancelled) {
-          setOrders(Array.isArray(data) ? data : []);
+          const loadedOrders = Array.isArray(data)
+            ? data
+            : Array.isArray(data?.orders)
+            ? data.orders
+            : [];
+          setOrders(loadedOrders);
           setIsLoading(false);
         }
       } catch (err: unknown) {
@@ -84,7 +89,12 @@ export default function AdminDashboardPage() {
         throw new Error(`Failed to fetch orders (${res.status})`);
       }
       const data = await res.json();
-      setOrders(Array.isArray(data) ? data : []);
+      const loadedOrders = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.orders)
+        ? data.orders
+        : [];
+      setOrders(loadedOrders);
     } catch (err: unknown) {
       console.error("Dashboard error fetching orders:", err);
       setError(

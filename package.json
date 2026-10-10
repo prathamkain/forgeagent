@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node -e \"const fs=require('fs');const p='./node_modules/ag-grid-community/package.json';if(fs.existsSync(p)){const pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(pkg.exports&&!pkg.exports['./styles/ag-theme-alpine-dark.css']){pkg.exports['./styles/ag-theme-alpine-dark.css']='./styles/ag-theme-alpine.css';fs.writeFileSync(p,JSON.stringify(pkg,null,2));}}\""
