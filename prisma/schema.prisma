@@ -1,0 +1,30 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model ChatSession {
+  id        String         @id @default(uuid())
+  createdAt DateTime       @default(now())
+  orders    ProductOrder[]
+}
+
+model ProductOrder {
+  id              String      @id @default(uuid())
+  sessionId       String
+  session         ChatSession @relation(fields: [sessionId], references: [id])
+  promptSpec      String
+  previewImageUrl String?
+  finalImageUrl   String?
+  paypalOrderId   String?
+  status          String      @default("PENDING") // PENDING, PAID, DELIVERED
+  price           Float
+  createdAt       DateTime    @default(now())
+}

@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -23,4 +23,48 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* AG Grid Custom Alpine Dark Styling */
+.ag-theme-alpine-dark {
+  --ag-background-color: #0c0e12;
+  --ag-header-background-color: #12151b;
+  --ag-odd-row-background-color: #0e1116;
+  --ag-border-color: #1e232d;
+  --ag-secondary-border-color: #181d26;
+  --ag-row-hover-color: rgba(56, 189, 248, 0.08);
+  --ag-alpine-active-color: #06b6d4;
+  --ag-selected-row-background-color: rgba(6, 182, 212, 0.12);
+  --ag-header-foreground-color: #94a3b8;
+  --ag-foreground-color: #f1f5f9;
+  --ag-font-family: inherit;
+  --ag-font-size: 13px;
+  --ag-border-radius: 12px;
+  --ag-card-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.ag-theme-alpine-dark .ag-header-cell {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.ag-theme-alpine-dark .ag-row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  transition: background-color 0.15s ease;
+}
+
+.ag-theme-alpine-dark .ag-paging-panel {
+  border-top: 1px solid #1e232d;
+  background-color: #101318;
+  color: #94a3b8;
+  font-size: 12px;
+  padding: 10px 16px;
+}
+
+.ag-theme-alpine-dark .ag-cell {
+  display: flex;
+  align-items: center;
 }

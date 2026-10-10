@@ -1,14 +1,19 @@
 {
-  "name": "temp-app",
+  "name": "paypal-project",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node -e \"const fs=require('fs');const p='./node_modules/ag-grid-community/package.json';if(fs.existsSync(p)){const pkg=JSON.parse(fs.readFileSync(p,'utf8'));if(pkg.exports&&!pkg.exports['./styles/ag-theme-alpine-dark.css']){pkg.exports['./styles/ag-theme-alpine-dark.css']='./styles/ag-theme-alpine.css';fs.writeFileSync(p,JSON.stringify(pkg,null,2));}}\""
   },
   "dependencies": {
+    "@paypal/react-paypal-js": "^10.5.2",
+    "@prisma/client": "^6.19.3",
+    "ag-grid-community": "^36.2.0",
+    "ag-grid-react": "^36.2.0",
     "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8"
@@ -18,8 +23,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^18.0.5",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
+    "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
