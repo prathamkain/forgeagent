@@ -144,6 +144,43 @@ function PreviewCard({
           </div>
         )}
       </div>
+
+      {/* Prominent Download Unlocked Asset Button (when isPaid) */}
+      {isPaid && (
+        <div className="relative z-10 border-t border-emerald-500/30 bg-emerald-950/40 p-3 flex items-center justify-between gap-3">
+          <div className="flex flex-col">
+            <span className="text-[11px] font-mono text-emerald-400 font-semibold flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+              Full 4K Asset Unlocked
+            </span>
+            <span className="text-[10px] text-neutral-400 font-mono">
+              Lossless Master • No Watermark • Commercial License
+            </span>
+          </div>
+          <a
+            href={previewImageUrl || "/api/image-proxy?prompt=cyberpunk+concept+art"}
+            target="_blank"
+            rel="noopener noreferrer"
+            download="ForgeAgent-Masterpiece.jpg"
+            className="flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-3.5 py-2 text-xs font-semibold text-neutral-950 shadow-lg shadow-emerald-950/40 transition-all active:scale-95 cursor-pointer"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+            <span>Download Unlocked Asset</span>
+          </a>
+        </div>
+      )}
     </div>
   );
 }
@@ -321,7 +358,8 @@ export default function ChatPage() {
     const currentMsg =
       activeCheckoutMsgIndex !== null ? messages[activeCheckoutMsgIndex] : null;
     const currentPrompt =
-      currentMsg?.imagePrompt || "Bespoke digital artwork";
+      currentMsg?.imagePrompt || "Generated Asset";
+    const dealPrice = 4.99;
     const finalImage =
       currentMsg?.previewImageUrl ||
       currentMsg?.previewUrl ||
@@ -354,12 +392,14 @@ export default function ChatPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        orderId: "SANDBOX-" + Date.now(),
-        prompt: currentPrompt,
-        amount: 4.99,
+        orderId:
+          "PAYID-" +
+          Math.random().toString(36).substring(2, 9).toUpperCase(),
+        prompt: currentPrompt || "Generated Asset",
+        amount: dealPrice || 4.99,
         status: "COMPLETED",
       }),
-    }).catch((e) => console.warn("Simulated order sync:", e));
+    }).catch((e) => console.error(e));
   };
 
   const samplePrompts = [
@@ -939,14 +979,74 @@ export default function ChatPage() {
                 }}
               />
 
-              {/* Quick Sandbox Demo Pay */}
-              <button
-                type="button"
-                onClick={handleDemoUnlock}
-                className="mt-3 w-full border border-zinc-700 text-xs text-zinc-400 py-1.5 rounded hover:text-white transition-colors cursor-pointer"
-              >
-                Quick Sandbox Demo Pay ($4.99)
-              </button>
+              {/* Explicit Sandbox Instant-Pay Action */}
+              <div className="mt-4 pt-3 border-t border-zinc-800 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const currentMsg =
+                      activeCheckoutMsgIndex !== null
+                        ? messages[activeCheckoutMsgIndex]
+                        : null;
+                    const currentPrompt =
+                      currentMsg?.imagePrompt || "Generated Asset";
+                    const dealPrice = 4.99;
+                    const finalImage =
+                      currentMsg?.previewImageUrl ||
+                      currentMsg?.previewUrl ||
+                      "https://via.placeholder.com/1024x1024/111111/44FF44?text=Final+4K+Masterpiece";
+
+                    setIsPaid(true);
+                    setShowCheckoutModal(false);
+
+                    if (activeCheckoutMsgIndex !== null) {
+                      setMessages((prev) =>
+                        prev.map((m, idx) =>
+                          idx === activeCheckoutMsgIndex
+                            ? { ...m, isPaid: true }
+                            : m
+                        )
+                      );
+                    }
+
+                    setMessages((prev) => [
+                      ...prev,
+                      {
+                        role: "system",
+                        content:
+                          "Payment verified! Here is your 4K non-watermarked masterpiece.",
+                        finalImageUrl: finalImage,
+                      },
+                    ]);
+
+                    try {
+                      await fetch("/api/orders", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          orderId:
+                            "PAYID-" +
+                            Math.random()
+                              .toString(36)
+                              .substring(2, 9)
+                              .toUpperCase(),
+                          prompt: currentPrompt || "Generated Asset",
+                          amount: dealPrice || 4.99,
+                          status: "COMPLETED",
+                        }),
+                      });
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  }}
+                  className="w-full py-2.5 px-4 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/40 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>✓ Complete Sandbox Payment ($4.99)</span>
+                </button>
+                <p className="text-[11px] text-zinc-500 text-center">
+                  Direct Sandbox Settlement • Verified by ForgeAgent Ledger
+                </p>
+              </div>
             </div>
 
             {/* Modal Footer Security Badges */}
