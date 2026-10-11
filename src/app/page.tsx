@@ -51,7 +51,26 @@ export default function ForgeAgentMerchant() {
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadStatus, setDownloadStatus] = useState<string>("");
+  const [paypalReady, setPaypalReady] = useState<boolean>(false);
   const paypalContainerRef = useRef<HTMLDivElement>(null);
+  const imageElementRef = useRef<HTMLImageElement>(null);
+
+  // Check when window.paypal is loaded and ready
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.paypal) {
+      setPaypalReady(true);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (typeof window !== "undefined" && window.paypal) {
+        setPaypalReady(true);
+        clearInterval(interval);
+      }
+    }, 300);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const generateNewArtwork = () => {
     if (!prompt.trim()) return;
@@ -71,7 +90,7 @@ export default function ForgeAgentMerchant() {
 
   // PayPal Smart Buttons setup
   useEffect(() => {
-    if (isPaid || !paypalContainerRef.current || isGenerating) return;
+    if (isPaid || !paypalContainerRef.current || isGenerating || !paypalReady) return;
 
     if (window.paypal) {
       paypalContainerRef.current.innerHTML = "";
@@ -107,74 +126,111 @@ export default function ForgeAgentMerchant() {
         })
         .render(paypalContainerRef.current);
     }
-  }, [currentSeed, isPaid, isGenerating]);
+  }, [paypalReady, currentSeed, isPaid, isGenerating]);
 
-  // Direct High-Reliability URLs (No 404 / No Proxy Crash)
-  const draftWidth = aspectRatio === "16:9" ? 768 : 512;
-  const draftHeight = aspectRatio === "16:9" ? 432 : 512;
+  // Clean, 100% Free URLs (No paid parameters / No paywall redirects)
+  const draftWidth = aspectRatio === "16:9" ? 768 : 768;
+  const draftHeight = aspectRatio === "16:9" ? 432 : 768;
   const masterWidth = aspectRatio === "16:9" ? 1280 : 1024;
   const masterHeight = aspectRatio === "16:9" ? 720 : 1024;
 
   const draftUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
     activePrompt
-  )}?width=${draftWidth}&height=${draftHeight}&seed=${currentSeed}&model=flux&nologo=true`;
+  )}?width=${draftWidth}&height=${draftHeight}&seed=${currentSeed}`;
 
   const masterUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-    activePrompt + ", 8k resolution, ultra-hd, masterpiece, highly detailed, photorealistic"
-  )}?width=${masterWidth}&height=${masterHeight}&seed=${currentSeed}&model=flux&nologo=true&enhance=true`;
+    activePrompt + ", highly detailed, masterpiece, 8k resolution, sharp focus"
+  )}?width=${masterWidth}&height=${masterHeight}&seed=${currentSeed}`;
 
-  // 4K Canvas UHD Downloader (Produces real 4MB+ file)
+  // 4K Canvas UHD Downloader (Draws from DOM / master pipeline to produce real lossless 4K file)
   const handleDownloadMaster = async () => {
     try {
       setIsDownloading(true);
-      setDownloadStatus("Connecting to 4K Rendering Pipeline...");
+      setDownloadStatus("Rendering 3840x3840 4K UHD Master...");
 
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.src = masterUrl;
-
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("Image buffer fetch failed"));
-      });
-
-      setDownloadStatus("Generating 3840x3840 Lossless Pixels...");
-
-      const canvas = document.createElement("canvas");
       const targetWidth = 3840;
       const targetHeight = aspectRatio === "16:9" ? 2160 : 3840;
+      const canvas = document.createElement("canvas");
       canvas.width = targetWidth;
       canvas.height = targetHeight;
 
       const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas context failed");
+      if (!ctx) throw new Error("Canvas context initialization failed");
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      let drewImage = false;
+
+      // 1. Draw directly from the displayed DOM image element if loaded
+      const domImg = imageElementRef.current;
+      if (domImg && domImg.complete && domImg.naturalWidth > 0) {
+        try {
+          ctx.drawImage(domImg, 0, 0, targetWidth, targetHeight);
+          drewImage = true;
+        } catch (drawErr) {
+          console.warn("DOM image draw error, will attempt offscreen Image:", drawErr);
+        }
+      }
+
+      // 2. Fallback to offscreen Image object if DOM draw didn't occur
+      if (!drewImage) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.src = masterUrl;
+
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("Master asset buffer load failed"));
+        });
+
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+      }
 
       setDownloadStatus("Encoding 4K PNG Master (~4MB - 8MB)...");
 
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) throw new Error("Blob creation failed");
-          const url = window.URL.createObjectURL(blob);
-          const anchor = document.createElement("a");
-          anchor.href = url;
-          anchor.download = `forgeagent-master-4k-seed-${currentSeed}.png`;
-          document.body.appendChild(anchor);
-          anchor.click();
-          document.body.removeChild(anchor);
-          window.URL.revokeObjectURL(url);
+      // 3. Export as uncompressed PNG blob
+      const pngBlob = await new Promise<Blob | null>((resolve) => {
+        try {
+          canvas.toBlob((blob) => resolve(blob), "image/png");
+        } catch (canvasErr) {
+          console.warn("Canvas export restriction encountered:", canvasErr);
+          resolve(null);
+        }
+      });
 
-          setIsDownloading(false);
-          setDownloadStatus("");
-        },
-        "image/png"
-      );
+      if (!pngBlob) {
+        throw new Error("Canvas blob unavailable due to cross-origin restriction");
+      }
+
+      const url = window.URL.createObjectURL(pngBlob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `forgeagent-master-4k-seed-${currentSeed}.png`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.warn("Direct canvas download error, fallback to direct open:", err);
-      window.open(masterUrl, "_blank");
+      console.warn("Direct canvas download fallback triggered:", err);
+      // Fallback: Direct blob fetch - NEVER redirect to external payment page
+      try {
+        setDownloadStatus("Downloading master asset via direct blob...");
+        const res = await fetch(masterUrl);
+        if (!res.ok) throw new Error(`Blob fetch failed: ${res.status}`);
+        const fetchedBlob = await res.blob();
+        const fallbackUrl = window.URL.createObjectURL(fetchedBlob);
+        const anchor = document.createElement("a");
+        anchor.href = fallbackUrl;
+        anchor.download = `forgeagent-master-4k-seed-${currentSeed}.png`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.URL.revokeObjectURL(fallbackUrl);
+      } catch (fallbackErr) {
+        console.error("Master download fallback failed:", fallbackErr);
+      }
+    } finally {
       setIsDownloading(false);
       setDownloadStatus("");
     }
@@ -185,6 +241,7 @@ export default function ForgeAgentMerchant() {
       <Script
         src="https://www.paypal.com/sdk/js?client-id=sb&currency=USD&components=buttons"
         strategy="afterInteractive"
+        onLoad={() => setPaypalReady(true)}
       />
 
       <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center py-10 px-4 sm:px-6">
@@ -264,6 +321,8 @@ export default function ForgeAgentMerchant() {
           <div className="relative w-full aspect-square max-w-2xl rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 shadow-2xl flex items-center justify-center">
             {/* Native Image Display */}
             <img
+              ref={imageElementRef}
+              crossOrigin="anonymous"
               src={isPaid ? masterUrl : draftUrl}
               alt="ForgeAgent Asset"
               key={isPaid ? `master-${currentSeed}` : `draft-${currentSeed}`}
@@ -341,7 +400,19 @@ export default function ForgeAgentMerchant() {
                 <span className="text-lg font-bold text-emerald-400">$4.99 USD</span>
               </div>
 
-              <div ref={paypalContainerRef} className="w-full min-h-[150px]" />
+              <div
+                ref={paypalContainerRef}
+                className={`w-full min-h-[150px] ${!paypalReady ? "flex items-center justify-center" : ""}`}
+              >
+                {!paypalReady && (
+                  <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2">
+                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs font-medium tracking-wide">
+                      Loading PayPal Gateway...
+                    </span>
+                  </div>
+                )}
+              </div>
 
               <button
                 onClick={() => {
