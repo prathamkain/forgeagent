@@ -34,8 +34,12 @@ export async function POST(req: Request) {
         lower.length > 20;
 
       if (isDesignRequest) {
-        const imagePrompt = `Masterpiece digital art of ${message}, cinematic lighting, 8k resolution, octane render, detailed composition`;
-        const previewImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=600&height=400&nologo=true&seed=${Date.now()}`;
+        const promptString =
+          typeof message === "string" && message.trim().length > 0
+            ? `Masterpiece digital art of ${message.trim()}, cinematic lighting, 8k resolution, octane render, detailed composition`
+            : "Masterpiece digital art, futuristic cyberpunk cinematic concept, octane render, 8k resolution";
+        const imagePrompt = promptString;
+        const previewImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptString)}?width=600&height=400&nologo=true&seed=${Date.now()}`;
 
         // Query Channel3 market price intelligence
         const marketIntelligence = await getMarketPriceEstimate(message);
@@ -138,15 +142,17 @@ Strict Rules:
     const parsed = JSON.parse(content);
 
     const isPreview = parsed.type === "preview";
-    const imagePrompt =
-      parsed.imagePrompt ||
-      (isPreview
-        ? `Masterpiece digital art of ${message}, cinematic lighting, 8k resolution, octane render, detailed composition`
-        : undefined);
-    const previewImageUrl =
-      isPreview && imagePrompt
-        ? `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=600&height=400&nologo=true&seed=${Date.now()}`
-        : undefined;
+    const promptString =
+      (typeof parsed.imagePrompt === "string" && parsed.imagePrompt.trim().length > 0)
+        ? parsed.imagePrompt.trim()
+        : (typeof message === "string" && message.trim().length > 0)
+        ? `Masterpiece digital art of ${message.trim()}, cinematic lighting, 8k resolution, octane render, detailed composition`
+        : "Masterpiece digital art, futuristic cyberpunk cinematic concept, octane render, 8k resolution";
+
+    const imagePrompt = isPreview ? promptString : undefined;
+    const previewImageUrl = isPreview
+      ? `https://image.pollinations.ai/prompt/${encodeURIComponent(promptString)}?width=600&height=400&nologo=true&seed=${Date.now()}`
+      : undefined;
 
     // Fetch Channel3 market price intelligence when a design/preview is requested
     let marketIntelligence = undefined;

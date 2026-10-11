@@ -18,7 +18,7 @@ interface Message {
 
 function PreviewCard({
   previewUrl,
-  previewImageUrl,
+  previewImageUrl: propPreviewImageUrl,
   imagePrompt,
   isPaid,
 }: {
@@ -27,9 +27,8 @@ function PreviewCard({
   imagePrompt?: string;
   isPaid?: boolean;
 }) {
-  const [hasError, setHasError] = useState(false);
+  const previewImageUrl = propPreviewImageUrl || previewUrl;
   const [showPrompt, setShowPrompt] = useState(false);
-  const displayUrl = previewImageUrl || previewUrl || "";
 
   return (
     <div className="relative mt-4 w-full max-w-lg overflow-hidden rounded-2xl border border-neutral-800/90 bg-neutral-950/90 shadow-2xl backdrop-blur-md ring-1 ring-white/10 transition-all duration-300 hover:border-neutral-700/80">
@@ -62,39 +61,21 @@ function PreviewCard({
 
       {/* Visual Canvas Area */}
       <div className="relative aspect-[3/2] w-full overflow-hidden bg-neutral-900 flex items-center justify-center">
-        {!hasError ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={displayUrl}
-            alt="AI Prototype Preview"
-            onError={() => setHasError(true)}
-            className="h-full w-full object-cover transition-transform duration-500 hover:scale-[1.02]"
-          />
-        ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-b from-neutral-900 to-neutral-950 p-6 text-center">
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 text-neutral-400 shadow-inner">
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
-                />
-              </svg>
-            </div>
-            <p className="font-mono text-xs uppercase tracking-wider text-neutral-300">
-              Prototype Render Generated
-            </p>
-            <p className="mt-1 text-[11px] text-neutral-500">
-              Low-Res Concept Spec Ready
-            </p>
-          </div>
-        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={
+            previewImageUrl ||
+            `https://image.pollinations.ai/prompt/cyberpunk%20concept%20art?width=600&height=400&nologo=true`
+          }
+          alt="Draft Preview"
+          className="w-full h-[400px] object-cover rounded-lg"
+          loading="eager"
+          onError={(e) => {
+            // Fallback if network or prompt encoding fails
+            (e.target as HTMLImageElement).src =
+              "https://image.pollinations.ai/prompt/futuristic%20digital%20concept%20art?width=600&height=400&nologo=true";
+          }}
+        />
 
         {/* Diagonal Watermark Banner Overlay */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px] opacity-80">
