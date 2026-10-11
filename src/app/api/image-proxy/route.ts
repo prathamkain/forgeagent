@@ -5,16 +5,22 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const prompt = searchParams.get("prompt") || "master artwork";
+    const userPrompt = searchParams.get("prompt") || "master artwork";
     const seed = searchParams.get("seed") || "42";
     const aspect = searchParams.get("aspect") || "1:1";
+
+    const QUALITY_BOOSTER =
+      "8k resolution, highly detailed, sharp focus, cinematic volumetric lighting, photorealistic, octane render, masterpiece, intricate details";
+    const finalPrompt = userPrompt.includes("octane render")
+      ? userPrompt
+      : `${userPrompt.trim()}, ${QUALITY_BOOSTER}`;
 
     const width = aspect === "16:9" ? 1280 : 1024;
     const height = aspect === "16:9" ? 720 : 1024;
 
     // Direct clean image endpoint without paywalled flags
     const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-      prompt
+      finalPrompt
     )}?width=${width}&height=${height}&seed=${seed}`;
 
     const res = await fetch(imageUrl);

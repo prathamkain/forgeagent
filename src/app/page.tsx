@@ -47,6 +47,7 @@ export default function ForgeAgentMerchant() {
   const [currentSeed, setCurrentSeed] = useState<number>(7439769);
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "16:9">("1:1");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [imageUrl, setImageUrl] = useState<string>("");
   const [isPaid, setIsPaid] = useState<boolean>(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
@@ -54,6 +55,10 @@ export default function ForgeAgentMerchant() {
   const [paypalReady, setPaypalReady] = useState<boolean>(false);
   const paypalContainerRef = useRef<HTMLDivElement>(null);
   const imageElementRef = useRef<HTMLImageElement>(null);
+
+  // Quality Booster String
+  const QUALITY_BOOSTER =
+    "8k resolution, highly detailed, sharp focus, cinematic volumetric lighting, photorealistic, octane render, masterpiece, intricate details";
 
   // Check when window.paypal is loaded and ready
   useEffect(() => {
@@ -72,8 +77,8 @@ export default function ForgeAgentMerchant() {
     return () => clearInterval(interval);
   }, []);
 
-  const generateNewArtwork = () => {
-    if (!prompt.trim()) return;
+  const generateNewArtwork = async () => {
+    if (!prompt.trim() || isGenerating) return;
     setIsGenerating(true);
     setIsPaid(false);
     setTransactionId(null);
@@ -83,10 +88,49 @@ export default function ForgeAgentMerchant() {
     setCurrentSeed(newSeed);
     setActivePrompt(prompt.trim());
 
-    setTimeout(() => {
+    try {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          seed: newSeed,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || `Generation failed: ${response.status}`);
+      }
+
+      const imageBlob = await response.blob();
+      const newObjectUrl = window.URL.createObjectURL(imageBlob);
+
+      setImageUrl((prev) => {
+        if (prev && prev.startsWith("blob:")) {
+          window.URL.revokeObjectURL(prev);
+        }
+        return newObjectUrl;
+      });
+    } catch (err) {
+      console.error("Artwork generation failed:", err);
+      // Graceful preview fallback if upstream token unconfigured or offline
+      const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+        `${prompt.trim()}, ${QUALITY_BOOSTER}`
+      )}?width=1024&height=1024&seed=${newSeed}`;
+      setImageUrl(fallbackUrl);
+    } finally {
       setIsGenerating(false);
-    }, 300);
+    }
   };
+
+  // Generate initial artwork on mount
+  useEffect(() => {
+    generateNewArtwork();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // PayPal Smart Buttons setup
   useEffect(() => {
@@ -128,114 +172,50 @@ export default function ForgeAgentMerchant() {
     }
   }, [paypalReady, currentSeed, isPaid, isGenerating]);
 
-  // Clean, 100% Free URLs (No paid parameters / No paywall redirects)
-  const draftWidth = aspectRatio === "16:9" ? 768 : 768;
-  const draftHeight = aspectRatio === "16:9" ? 432 : 768;
-  const masterWidth = aspectRatio === "16:9" ? 1280 : 1024;
-  const masterHeight = aspectRatio === "16:9" ? 720 : 1024;
-
-  const draftUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-    activePrompt
-  )}?width=${draftWidth}&height=${draftHeight}&seed=${currentSeed}`;
-
-  const masterUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-    activePrompt + ", highly detailed, masterpiece, 8k resolution, sharp focus"
-  )}?width=${masterWidth}&height=${masterHeight}&seed=${currentSeed}`;
-
-  // 4K Canvas UHD Downloader (Draws from DOM / master pipeline to produce real lossless 4K file)
+  // Master asset downloader calling /api/download-master?prompt={prompt}&seed={seed}
   const handleDownloadMaster = async () => {
     try {
       setIsDownloading(true);
-      setDownloadStatus("Rendering 3840x3840 4K UHD Master...");
+      setDownloadStatus("Fetching master commercial asset from pipeline...");
 
-      const targetWidth = 3840;
-      const targetHeight = aspectRatio === "16:9" ? 2160 : 3840;
-      const canvas = document.createElement("canvas");
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
+      const downloadUrl = `/api/download-master?prompt=${encodeURIComponent(
+        activePrompt
+      )}&seed=${currentSeed}`;
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas context initialization failed");
-
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-
-      let drewImage = false;
-
-      // 1. Draw directly from the displayed DOM image element if loaded
-      const domImg = imageElementRef.current;
-      if (domImg && domImg.complete && domImg.naturalWidth > 0) {
-        try {
-          ctx.drawImage(domImg, 0, 0, targetWidth, targetHeight);
-          drewImage = true;
-        } catch (drawErr) {
-          console.warn("DOM image draw error, will attempt offscreen Image:", drawErr);
-        }
+      const res = await fetch(downloadUrl);
+      if (!res.ok) {
+        throw new Error(`Master download failed: ${res.status}`);
       }
 
-      // 2. Fallback to offscreen Image object if DOM draw didn't occur
-      if (!drewImage) {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = masterUrl;
-
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = () => reject(new Error("Master asset buffer load failed"));
-        });
-
-        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-      }
-
-      setDownloadStatus("Encoding 4K PNG Master (~4MB - 8MB)...");
-
-      // 3. Export as uncompressed PNG blob
-      const pngBlob = await new Promise<Blob | null>((resolve) => {
-        try {
-          canvas.toBlob((blob) => resolve(blob), "image/png");
-        } catch (canvasErr) {
-          console.warn("Canvas export restriction encountered:", canvasErr);
-          resolve(null);
-        }
-      });
-
-      if (!pngBlob) {
-        throw new Error("Canvas blob unavailable due to cross-origin restriction");
-      }
-
-      const url = window.URL.createObjectURL(pngBlob);
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `forgeagent-master-4k-seed-${currentSeed}.png`;
+      anchor.href = blobUrl;
+      anchor.download = `forgeagent-master-seed-${currentSeed}.jpg`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
     } catch (err) {
-      console.warn("Direct canvas download fallback triggered:", err);
-      // Fallback: Direct blob fetch - NEVER redirect to external payment page
+      console.warn("Direct /api/download-master error, fallback initiated:", err);
       try {
-        setDownloadStatus("Downloading master asset via direct blob...");
-        let res = await fetch(masterUrl).catch(() => null);
-        if (!res || !res.ok) {
-          res = await fetch(
-            `/api/image-proxy?prompt=${encodeURIComponent(
-              activePrompt
-            )}&seed=${currentSeed}&aspect=${aspectRatio}`
-          );
-        }
-        if (!res.ok) throw new Error(`Blob fetch failed: ${res.status}`);
-        const fetchedBlob = await res.blob();
-        const fallbackUrl = window.URL.createObjectURL(fetchedBlob);
+        setDownloadStatus("Downloading via fallback pipeline...");
+        const fallbackUrl = `/api/image-proxy?prompt=${encodeURIComponent(
+          activePrompt
+        )}&seed=${currentSeed}&aspect=${aspectRatio}`;
+        const fallbackRes = await fetch(fallbackUrl);
+        if (!fallbackRes.ok) throw new Error("Fallback failed");
+        const fallbackBlob = await fallbackRes.blob();
+        const fallbackBlobUrl = window.URL.createObjectURL(fallbackBlob);
         const anchor = document.createElement("a");
-        anchor.href = fallbackUrl;
-        anchor.download = `forgeagent-master-4k-seed-${currentSeed}.png`;
+        anchor.href = fallbackBlobUrl;
+        anchor.download = `forgeagent-master-seed-${currentSeed}.jpg`;
         document.body.appendChild(anchor);
         anchor.click();
         document.body.removeChild(anchor);
-        window.URL.revokeObjectURL(fallbackUrl);
+        window.URL.revokeObjectURL(fallbackBlobUrl);
       } catch (fallbackErr) {
-        console.error("Master download fallback failed:", fallbackErr);
+        console.error("Master download completely failed:", fallbackErr);
       }
     } finally {
       setIsDownloading(false);
@@ -296,8 +276,8 @@ export default function ForgeAgentMerchant() {
                   type="button"
                   onClick={() => setAspectRatio("1:1")}
                   className={`px-2 py-0.5 rounded ${aspectRatio === "1:1"
-                      ? "bg-slate-700 text-white font-medium"
-                      : "hover:text-white"
+                    ? "bg-slate-700 text-white font-medium"
+                    : "hover:text-white"
                     }`}
                 >
                   1:1
@@ -306,8 +286,8 @@ export default function ForgeAgentMerchant() {
                   type="button"
                   onClick={() => setAspectRatio("16:9")}
                   className={`px-2 py-0.5 rounded ${aspectRatio === "16:9"
-                      ? "bg-slate-700 text-white font-medium"
-                      : "hover:text-white"
+                    ? "bg-slate-700 text-white font-medium"
+                    : "hover:text-white"
                     }`}
                 >
                   16:9
@@ -327,17 +307,29 @@ export default function ForgeAgentMerchant() {
         <div className="max-w-2xl w-full flex flex-col items-center">
           <div className="relative w-full aspect-square max-w-2xl rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 shadow-2xl flex items-center justify-center">
             {/* Native Image Display */}
-            <img
-              ref={imageElementRef}
-              crossOrigin="anonymous"
-              src={isPaid ? masterUrl : draftUrl}
-              alt="ForgeAgent Asset"
-              key={isPaid ? `master-${currentSeed}` : `draft-${currentSeed}`}
-              className="w-full h-full object-contain select-none transition-all duration-300"
-            />
+            {isGenerating ? (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
+                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-semibold tracking-wide uppercase text-indigo-400">
+                  Forging Autonomous Asset...
+                </span>
+              </div>
+            ) : imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                ref={imageElementRef}
+                crossOrigin="anonymous"
+                src={imageUrl}
+                alt="ForgeAgent Asset"
+                key={`asset-${currentSeed}-${isPaid ? "paid" : "unpaid"}`}
+                className="w-full h-full object-contain select-none transition-all duration-300"
+              />
+            ) : (
+              <div className="text-slate-500 text-sm">No artwork generated</div>
+            )}
 
             {/* Red Diagonal Watermark (Unpaid Only) */}
-            {!isPaid && (
+            {!isPaid && imageUrl && !isGenerating && (
               <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center">
                 <div className="absolute inset-0 bg-repeat [background-image:repeating-linear-gradient(45deg,rgba(0,0,0,0.15)_0,rgba(0,0,0,0.15)_20px,transparent_20px,transparent_40px)]" />
                 <div className="rotate-[-25deg] bg-red-600/90 text-white font-black tracking-widest text-sm sm:text-base uppercase py-3 px-16 shadow-2xl border-y-2 border-white/30 text-center select-none backdrop-blur-xs">
@@ -350,7 +342,7 @@ export default function ForgeAgentMerchant() {
             )}
           </div>
 
-          {/* Paid State: Unlocked & 4K Download */}
+          {/* Paid State: Unlocked & Master Download */}
           {isPaid && (
             <div className="w-full mt-6 flex flex-col items-center gap-4">
               <div className="w-full bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -368,18 +360,18 @@ export default function ForgeAgentMerchant() {
                   </div>
                 </div>
                 <div className="px-3 py-1 bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold rounded-full border border-emerald-500/30">
-                  Resolution: 3840x3840 (True 4K UHD)
+                  Resolution: 1024x1024 Master Asset
                 </div>
               </div>
 
-              {/* Master 4K Download Button */}
+              {/* Master Download Button */}
               <button
                 onClick={handleDownloadMaster}
                 disabled={isDownloading}
                 className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-bold rounded-xl shadow-xl shadow-emerald-950/40 transition flex items-center justify-center gap-3 text-base sm:text-lg"
               >
                 {isDownloading ? (
-                  <span>{downloadStatus || "Generating 4K Lossless Asset..."}</span>
+                  <span>{downloadStatus || "Downloading Master Asset..."}</span>
                 ) : (
                   <>
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -390,7 +382,7 @@ export default function ForgeAgentMerchant() {
                         d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                       />
                     </svg>
-                    <span>Download Lossless 4K Master Asset (.PNG)</span>
+                    <span>Download Commercial Master Asset (.JPG)</span>
                   </>
                 )}
               </button>
