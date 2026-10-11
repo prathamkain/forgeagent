@@ -1,11 +1,14 @@
 const PAYPAL_API_BASE = process.env.PAYPAL_API_URL || "https://api-m.sandbox.paypal.com";
 
 function getCredentials() {
-  const clientId = process.env.PAYPAL_CLIENT_ID;
+  const clientId =
+    process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || process.env.PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    throw new Error("Missing PAYPAL_CLIENT_ID or PAYPAL_CLIENT_SECRET in environment variables.");
+    throw new Error(
+      "Missing NEXT_PUBLIC_PAYPAL_CLIENT_ID (or PAYPAL_CLIENT_ID) and PAYPAL_CLIENT_SECRET in environment variables."
+    );
   }
 
   return { clientId, clientSecret };
