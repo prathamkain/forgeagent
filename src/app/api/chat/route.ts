@@ -1,6 +1,30 @@
 import { NextResponse } from "next/server";
 import { getMarketPriceEstimate } from "@/lib/channel3";
 
+function enhancePromptAnatomy(prompt: string): string {
+  let enhanced = prompt.trim();
+  const lower = enhanced.toLowerCase();
+
+  // Explicitly check for animals or quadrupeds
+  const animalKeywords = [
+    "dog", "puppy", "hound", "cat", "kitten", "feline", "horse", "stallion",
+    "wolf", "wolves", "lion", "tiger", "bear", "fox", "deer", "cheetah",
+    "leopard", "rabbit", "bunny", "animal", "creature", "beast"
+  ];
+  const hasAnimal = animalKeywords.some((word) => lower.includes(word));
+
+  if (hasAnimal && !lower.includes("four legs") && !lower.includes("anatomically correct")) {
+    enhanced += ", anatomically correct, exactly four legs, natural posture, realistic body proportions";
+  }
+
+  // Visual-quality enhancement tags if not already present
+  if (!lower.includes("8k") && !lower.includes("photorealistic")) {
+    enhanced += ", photorealistic, anatomically explicit details, 8k photograph, cinematic lighting, masterwork composition, high-fidelity";
+  }
+
+  return enhanced;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -31,15 +55,20 @@ export async function POST(req: Request) {
         lower.includes("logo") ||
         lower.includes("illustration") ||
         lower.includes("image") ||
+        lower.includes("dog") ||
+        lower.includes("cat") ||
         lower.length > 20;
 
       if (isDesignRequest) {
-        const promptString =
+        const rawPrompt =
           typeof message === "string" && message.trim().length > 0
-            ? `Masterpiece digital art of ${message.trim()}, cinematic lighting, 8k resolution, octane render, detailed composition`
-            : "Masterpiece digital art, futuristic cyberpunk cinematic concept, octane render, 8k resolution";
+            ? message.trim()
+            : "cyberpunk digital concept art";
+        const promptString = enhancePromptAnatomy(
+          `Masterpiece digital art of ${rawPrompt}`
+        );
         const imagePrompt = promptString;
-        const previewImageUrl = `/api/image-proxy?prompt=${encodeURIComponent(imagePrompt || message)}`;
+        const previewImageUrl = `/api/image-proxy?prompt=${encodeURIComponent(imagePrompt)}`;
 
         // Query Channel3 market price intelligence
         const marketIntelligence = await getMarketPriceEstimate(message);
@@ -79,8 +108,14 @@ Case 2 - If the user asks for a design, art, illustration, product visual, conce
 {
   "type": "preview",
   "message": "Here is a low-res prototype concept. Pay $4.99 to generate the final 4K version.",
-  "imagePrompt": "A detailed DALL-E/Midjourney prompt based on user request"
+  "imagePrompt": "A highly descriptive, photorealistic, anatomically explicit visual prompt based on user request"
 }
+
+Critical Instructions for imagePrompt:
+- Generate highly descriptive, photorealistic, anatomically explicit details.
+- For animal descriptions (e.g., dog, cat, horse, wolf): you MUST explicitly specify "anatomically correct, exactly four legs, natural posture, realistic body proportions" (e.g. for "dog", expand to "a happy, realistic golden retriever with exactly four legs, running naturally, in a cinematic sunlit wildflower field, 8k photograph, high-fidelity, anatomically correct").
+- Always include visual-quality enhancement tags: "photorealistic, 8k photograph, cinematic lighting, high-fidelity, detailed composition, masterwork".
+- Strictly prevent anatomical distortions: never depict extra limbs, mutated anatomy, or unnatural bodies.
 
 Strict Rules:
 - Return ONLY valid JSON, with NO surrounding markdown or extra text.
@@ -142,16 +177,17 @@ Strict Rules:
     const parsed = JSON.parse(content);
 
     const isPreview = parsed.type === "preview";
-    const promptString =
+    const rawPrompt =
       (typeof parsed.imagePrompt === "string" && parsed.imagePrompt.trim().length > 0)
         ? parsed.imagePrompt.trim()
         : (typeof message === "string" && message.trim().length > 0)
-        ? `Masterpiece digital art of ${message.trim()}, cinematic lighting, 8k resolution, octane render, detailed composition`
-        : "Masterpiece digital art, futuristic cyberpunk cinematic concept, octane render, 8k resolution";
+        ? `Masterpiece digital art of ${message.trim()}`
+        : "Masterpiece digital art, futuristic cyberpunk cinematic concept";
 
+    const promptString = enhancePromptAnatomy(rawPrompt);
     const imagePrompt = isPreview ? promptString : undefined;
     const previewImageUrl = isPreview
-      ? `/api/image-proxy?prompt=${encodeURIComponent(imagePrompt || message)}`
+      ? `/api/image-proxy?prompt=${encodeURIComponent(promptString)}`
       : undefined;
 
     // Fetch Channel3 market price intelligence when a design/preview is requested
