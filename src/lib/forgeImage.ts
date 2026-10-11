@@ -28,32 +28,16 @@ export function randomSeed(): number {
   return Math.floor(Math.random() * 999_999) + 1;
 }
 
-// Preview (client) and master download (server) BOTH use this, so same
-// prompt + seed + aspect => identical composition.
 export function buildImageCandidates(
   userPrompt: string,
   seed: number,
   aspect: AspectKey
 ): ImageCandidate[] {
-  const { width, height } = ASPECTS[aspect];
-  const fullPrompt = encodeURIComponent(
-    `${sanitizePrompt(userPrompt)}, ${QUALITY_BOOSTERS}`
-  );
-  const params = (extra: Record<string, string> = {}) =>
-    new URLSearchParams({
-      width: String(width),
-      height: String(height),
-      seed: String(seed),
-      nologo: "true",
-      enhance: "false",
-      private: "true",
-      negative_prompt: NEGATIVE_PROMPT,
-      ...extra,
-    }).toString();
-
-  return [
-    { id: "pollinations-flux", url: `https://image.pollinations.ai/prompt/${fullPrompt}?${params({ model: "flux" })}` },
-    { id: "pollinations-gen-flux", url: `https://gen.pollinations.ai/image/${fullPrompt}?${params({ model: "flux" })}` },
-    { id: "pollinations-default", url: `https://image.pollinations.ai/prompt/${fullPrompt}?${params()}` },
-  ];
+  const qs = new URLSearchParams({
+    prompt: sanitizePrompt(userPrompt),
+    seed: String(seed),
+    aspect,
+  });
+  return [{ id: "forge-preview", url: `/api/preview?${qs.toString()}` }];
 }
+

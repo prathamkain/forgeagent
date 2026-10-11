@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
-import {
-  ASPECTS,
-  AspectKey,
-  buildImageCandidates,
-  sanitizePrompt,
-} from "../../../lib/forgeImage";
+import { ASPECTS, AspectKey, sanitizePrompt } from "../../../lib/forgeImage";
+import { getRenderedImage } from "../../../lib/forgeRender";
 import {
   assetFingerprint,
   verifyUnlockToken,
@@ -15,10 +11,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const PER_ATTEMPT_MS = 40_000;
-const TOTAL_BUDGET_MS = 85_000;
-const MIN_BYTES = 20_000;
 
 const TARGETS: Record<AspectKey, { width: number; height: number }> = {
   "1:1": { width: 4096, height: 4096 },
@@ -35,26 +27,6 @@ async function upscaleTo4K(input: Buffer, aspect: AspectKey): Promise<Buffer> {
     .sharpen({ sigma: 1.1, m1: 0.6, m2: 1.8 })
     .png({ compressionLevel: 6, adaptiveFiltering: false })
     .toBuffer();
-}
-
-async function grab(url: string, ms: number) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      cache: "no-store",
-      headers: { Accept: "image/*", "User-Agent": "ForgeAgent/1.0" },
-    });
-    if (!res.ok) throw new Error(`upstream ${res.status}`);
-    const type = res.headers.get("content-type") ?? "";
-    if (!type.startsWith("image/")) throw new Error(`bad content-type ${type}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength < MIN_BYTES) throw new Error("image too small");
-    return { buf, type };
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 export async function GET(req: NextRequest) {
@@ -83,52 +55,42 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Demo unlock is disabled" }, { status: 403 });
   }
 
-  const candidates = buildImageCandidates(prompt, seed, aspect);
-  const deadline = Date.now() + TOTAL_BUDGET_MS;
-  let lastError = "unknown";
-
-  for (const c of candidates) {
-    const remaining = deadline - Date.now();
-    if (remaining < 5_000) break;
-    try {
-      const { buf, type } = await grab(c.url, Math.min(PER_ATTEMPT_MS, remaining));
-      try {
-        const master = await upscaleTo4K(buf, aspect);
-        return new NextResponse(
-          new Uint8Array(master.buffer as ArrayBuffer, master.byteOffset, master.byteLength),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "image/png",
-              "Content-Length": String(master.byteLength),
-              "Content-Disposition": `attachment; filename="forgeagent-master-4k-${seed}.png"`,
-              "Cache-Control": "no-store",
-              "X-Master-Resolution": `${TARGETS[aspect].width}x${TARGETS[aspect].height}`,
-            },
-          }
-        );
-      } catch (upscaleErr) {
-        console.error("[download-master] upscale failed, falling back to original:", upscaleErr);
-        const ext = type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg";
-        return new NextResponse(new Uint8Array(buf), {
-          status: 200,
-          headers: {
-            "Content-Type": type,
-            "Content-Length": String(buf.byteLength),
-            "Content-Disposition": `attachment; filename="forgeagent-master-${seed}.${ext}"`,
-            "Cache-Control": "no-store",
-            "X-Master-Resolution": "fallback-original",
-          },
-        });
-      }
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-      console.error(`[download-master] ${c.id} failed:`, lastError);
-    }
+  let rendered;
+  try {
+    rendered = await getRenderedImage(prompt, seed, aspect);
+  } catch (err) {
+    console.error("[download-master] render failed:", err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: "Master render unavailable, please retry." }, { status: 502 });
   }
+  const { buf, type } = rendered;
 
-  return NextResponse.json(
-    { error: "Master render unavailable, please retry.", detail: lastError },
-    { status: 502 }
-  );
+  try {
+    const master = await upscaleTo4K(buf, aspect);
+    return new NextResponse(
+      new Uint8Array(master.buffer as ArrayBuffer, master.byteOffset, master.byteLength),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Content-Length": String(master.byteLength),
+          "Content-Disposition": `attachment; filename="forgeagent-master-4k-${seed}.png"`,
+          "Cache-Control": "no-store",
+          "X-Master-Resolution": `${TARGETS[aspect].width}x${TARGETS[aspect].height}`,
+        },
+      }
+    );
+  } catch (upscaleErr) {
+    console.error("[download-master] upscale failed, falling back to original:", upscaleErr);
+    const ext = type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg";
+    return new NextResponse(new Uint8Array(buf), {
+      status: 200,
+      headers: {
+        "Content-Type": type,
+        "Content-Length": String(buf.byteLength),
+        "Content-Disposition": `attachment; filename="forgeagent-master-${seed}.${ext}"`,
+        "Cache-Control": "no-store",
+        "X-Master-Resolution": "fallback-original",
+      },
+    });
+  }
 }

@@ -169,7 +169,7 @@ export default function ForgeAgentMerchant() {
         img.onerror = null;
         tryLoad(i + 1);
       };
-      const timer = setTimeout(next, 45_000);
+      const timer = setTimeout(next, 100_000);
       img.onload = () => {
         if (settled) return;
         settled = true;
