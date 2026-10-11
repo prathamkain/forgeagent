@@ -9,6 +9,7 @@ interface Message {
   role: string;
   content: string;
   previewUrl?: string;
+  previewImageUrl?: string;
   imagePrompt?: string;
   finalImageUrl?: string;
   isPaid?: boolean;
@@ -17,15 +18,18 @@ interface Message {
 
 function PreviewCard({
   previewUrl,
+  previewImageUrl,
   imagePrompt,
   isPaid,
 }: {
-  previewUrl: string;
+  previewUrl?: string;
+  previewImageUrl?: string;
   imagePrompt?: string;
   isPaid?: boolean;
 }) {
   const [hasError, setHasError] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
+  const displayUrl = previewImageUrl || previewUrl || "";
 
   return (
     <div className="relative mt-4 w-full max-w-lg overflow-hidden rounded-2xl border border-neutral-800/90 bg-neutral-950/90 shadow-2xl backdrop-blur-md ring-1 ring-white/10 transition-all duration-300 hover:border-neutral-700/80">
@@ -61,7 +65,7 @@ function PreviewCard({
         {!hasError ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={previewUrl}
+            src={displayUrl}
             alt="AI Prototype Preview"
             onError={() => setHasError(true)}
             className="h-full w-full object-cover transition-transform duration-500 hover:scale-[1.02]"
@@ -92,10 +96,10 @@ function PreviewCard({
           </div>
         )}
 
-        {/* Diagonal Watermark Badge Overlay */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 backdrop-contrast-125">
-          <span className="rotate-[-18deg] select-none rounded border border-white/20 bg-black/60 px-4 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white/50 shadow-2xl backdrop-blur-xs">
-            ForgeAgent // Watermarked Draft
+        {/* Diagonal Watermark Banner Overlay */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px] opacity-80">
+          <span className="rotate-[-18deg] select-none rounded border border-white/20 bg-black/40 px-4 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white/90 shadow-2xl backdrop-blur-[1px]">
+            FORGEAGENT // WATERMARKED DRAFT
           </span>
         </div>
       </div>
@@ -287,12 +291,15 @@ export default function ChatPage() {
         data.message ||
         "I can definitely design that for you! Give me a second to process the vibe...";
 
+      const dynamicPreview = data.previewImageUrl || data.previewUrl;
+
       setMessages((prev) => [
         ...prev,
         {
           role: "agent",
           content: replyText,
-          previewUrl: data.previewUrl,
+          previewUrl: dynamicPreview,
+          previewImageUrl: dynamicPreview,
           imagePrompt: data.imagePrompt,
           isPaid: false,
           marketIntelligence: data.marketIntelligence,
@@ -487,10 +494,11 @@ export default function ChatPage() {
                     <p className="whitespace-pre-wrap">{msg.content}</p>
 
                     {/* Render Prototype Image Preview if present */}
-                    {msg.previewUrl && (
+                    {(msg.previewImageUrl || msg.previewUrl) && (
                       <div className="flex flex-col">
                         <PreviewCard
                           previewUrl={msg.previewUrl}
+                          previewImageUrl={msg.previewImageUrl}
                           imagePrompt={msg.imagePrompt}
                           isPaid={msg.isPaid}
                         />
@@ -617,7 +625,7 @@ export default function ChatPage() {
                                     body: JSON.stringify({
                                       orderID: data.orderID,
                                       imagePrompt: msg.imagePrompt,
-                                      previewUrl: msg.previewUrl,
+                                      previewUrl: msg.previewImageUrl || msg.previewUrl,
                                     }),
                                   }
                                 );

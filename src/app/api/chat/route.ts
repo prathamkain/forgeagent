@@ -35,8 +35,7 @@ export async function POST(req: Request) {
 
       if (isDesignRequest) {
         const imagePrompt = `Masterpiece digital art of ${message}, cinematic lighting, 8k resolution, octane render, detailed composition`;
-        const previewUrl =
-          "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&auto=format&fit=crop&q=80";
+        const previewImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=600&height=400&nologo=true&seed=${Date.now()}`;
 
         // Query Channel3 market price intelligence
         const marketIntelligence = await getMarketPriceEstimate(message);
@@ -48,7 +47,8 @@ export async function POST(req: Request) {
           reply:
             "Here is your low-res prototype concept. Pay $4.99 to unlock and generate the full 4K lossless master via DALL-E 3.",
           imagePrompt,
-          previewUrl,
+          previewImageUrl,
+          previewUrl: previewImageUrl,
           marketIntelligence,
         });
       }
@@ -138,15 +138,21 @@ Strict Rules:
     const parsed = JSON.parse(content);
 
     const isPreview = parsed.type === "preview";
-    const previewUrl = isPreview
-      ? "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&auto=format&fit=crop&q=80"
-      : undefined;
+    const imagePrompt =
+      parsed.imagePrompt ||
+      (isPreview
+        ? `Masterpiece digital art of ${message}, cinematic lighting, 8k resolution, octane render, detailed composition`
+        : undefined);
+    const previewImageUrl =
+      isPreview && imagePrompt
+        ? `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=600&height=400&nologo=true&seed=${Date.now()}`
+        : undefined;
 
     // Fetch Channel3 market price intelligence when a design/preview is requested
     let marketIntelligence = undefined;
     if (isPreview) {
       marketIntelligence = await getMarketPriceEstimate(
-        parsed.imagePrompt || message
+        imagePrompt || message
       );
     }
 
@@ -154,8 +160,9 @@ Strict Rules:
       type: parsed.type,
       message: parsed.message,
       reply: parsed.message,
-      imagePrompt: parsed.imagePrompt,
-      previewUrl,
+      imagePrompt,
+      previewImageUrl,
+      previewUrl: previewImageUrl,
       marketIntelligence,
     });
   } catch (error) {
