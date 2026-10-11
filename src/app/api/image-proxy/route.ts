@@ -4,50 +4,43 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const prompt = searchParams.get("prompt") || "cyberpunk digital artwork";
-  const targetUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=768&model=flux&enhance=true&nologo=true&seed=${Date.now()}`;
+  const prompt = searchParams.get("prompt") || "cyberpunk concept art";
+
+  // Direct Pollinations URL with prompt encoding
+  const safePrompt = encodeURIComponent(prompt.trim());
+  const targetUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=800&height=500&model=flux&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
 
   try {
-    const res = await fetch(targetUrl, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch from pollinations flux");
-    const buffer = await res.arrayBuffer();
-    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
 
-    return new NextResponse(buffer, {
+    const res = await fetch(targetUrl, {
+      signal: controller.signal,
       headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=3600",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
+      cache: "no-store",
     });
-  } catch (error) {
-    console.warn("Pollinations Flux primary error, falling back to Flux fallback URL:", error);
-    try {
-      const fallbackUrl =
-        "https://image.pollinations.ai/prompt/artistic%20nature%20photograph%20digital%20masterpiece?width=1024&height=768&model=flux&nologo=true";
-      const fallbackRes = await fetch(fallbackUrl);
-      if (!fallbackRes.ok) throw new Error("Flux fallback failed");
-      const fallbackBuffer = await fallbackRes.arrayBuffer();
-      const contentType = fallbackRes.headers.get("content-type") || "image/jpeg";
-      return new NextResponse(fallbackBuffer, {
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const buffer = await res.arrayBuffer();
+      const contentType = res.headers.get("content-type") || "image/jpeg";
+      return new NextResponse(buffer, {
         headers: {
           "Content-Type": contentType,
-          "Cache-Control": "public, max-age=3600",
+          "Cache-Control": "public, max-age=86400",
         },
       });
-    } catch (fallbackError) {
-      console.warn("Pollinations fallback failed, using safety Unsplash fallback:", fallbackError);
-      try {
-        const unsplashRes = await fetch(
-          "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&q=80"
-        );
-        const unsplashBuffer = await unsplashRes.arrayBuffer();
-        return new NextResponse(unsplashBuffer, {
-          headers: { "Content-Type": "image/jpeg" },
-        });
-      } catch (finalError) {
-        console.error("Image proxy fatal error:", finalError);
-        return new NextResponse("Failed to load image", { status: 502 });
-      }
     }
+  } catch (err) {
+    console.error(
+      "Image proxy primary fetch failed, redirecting to direct provider:",
+      err
+    );
   }
+
+  // If server fetch times out, 302 redirect browser directly to pollinations client-side
+  return NextResponse.redirect(targetUrl);
 }
