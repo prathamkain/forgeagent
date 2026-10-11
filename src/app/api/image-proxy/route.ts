@@ -5,29 +5,25 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const prompt = searchParams.get("prompt") || "cyberpunk concept art";
-  const seed = searchParams.get("seed") || "42";
-  const quality = searchParams.get("quality");
-  const isMaster = quality === "master";
-  const width = searchParams.get("width") || (isMaster ? "1280" : "640");
-  const height = searchParams.get("height") || (isMaster ? "720" : "360");
+  const seed = searchParams.get("seed") || "101";
+  const quality = searchParams.get("quality") || "draft";
 
-  // Direct Pollinations URL with prompt encoding
+  // Draft = 768x512, Master = 1280x720 with enhance flag
+  const width = quality === "master" ? 1280 : 768;
+  const height = quality === "master" ? 720 : 512;
+  const enhance = quality === "master" ? "&enhance=true" : "";
+
   const safePrompt = encodeURIComponent(prompt.trim());
-  const targetUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=${width}&height=${height}&model=flux&nologo=true&seed=${seed}`;
+  const targetUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=${width}&height=${height}&model=flux&seed=${seed}&nologo=true${enhance}`;
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
-
     const res = await fetch(targetUrl, {
-      signal: controller.signal,
+      cache: "no-store",
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
       },
-      cache: "no-store",
     });
-    clearTimeout(timeoutId);
 
     if (res.ok) {
       const buffer = await res.arrayBuffer();
@@ -35,18 +31,17 @@ export async function GET(req: NextRequest) {
       return new NextResponse(buffer, {
         headers: {
           "Content-Type": contentType,
-          "Content-Disposition": "inline",
-          "Cache-Control": "public, max-age=86400",
+          // NEVER cache so unlock always gets the real master
+          "Cache-Control":
+            "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+          Pragma: "no-cache",
+          Expires: "0",
         },
       });
     }
   } catch (err) {
-    console.error(
-      "Image proxy primary fetch failed, redirecting to direct provider:",
-      err
-    );
+    console.error("Image fetch error:", err);
   }
 
-  // If server fetch times out, 302 redirect browser directly to pollinations client-side
   return NextResponse.redirect(targetUrl);
 }
