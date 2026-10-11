@@ -47,7 +47,11 @@ export default function ForgeAgentMerchant() {
   const [currentSeed, setCurrentSeed] = useState<number>(7439769);
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "16:9">("1:1");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [imageUrl, setImageUrl] = useState<string>("");
+  const [imageUrl, setImageUrl] = useState<string>(
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(
+      "Cyberpunk neon street merchant android, cinematic volumetric lighting, 8k render, hyper-detailed, sharp focus, 8k resolution, masterpiece, cinematic"
+    )}?width=1024&height=1024&seed=7439769`
+  );
   const [isPaid, setIsPaid] = useState<boolean>(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
@@ -77,8 +81,8 @@ export default function ForgeAgentMerchant() {
     return () => clearInterval(interval);
   }, []);
 
-  const generateNewArtwork = async () => {
-    if (!prompt.trim() || isGenerating) return;
+  const handleGenerate = () => {
+    if (!prompt.trim()) return;
     setIsGenerating(true);
     setIsPaid(false);
     setTransactionId(null);
@@ -88,49 +92,19 @@ export default function ForgeAgentMerchant() {
     setCurrentSeed(newSeed);
     setActivePrompt(prompt.trim());
 
-    try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt: prompt.trim(),
-          seed: newSeed,
-        }),
-      });
+    // Instant direct high-quality URL without external API timeouts
+    const newUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+      prompt.trim() + ', hyper-detailed, sharp focus, 8k resolution, masterpiece, cinematic'
+    )}?width=1024&height=1024&seed=${newSeed}`;
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.error || `Generation failed: ${response.status}`);
-      }
+    setImageUrl(newUrl);
 
-      const imageBlob = await response.blob();
-      const newObjectUrl = window.URL.createObjectURL(imageBlob);
-
-      setImageUrl((prev) => {
-        if (prev && prev.startsWith("blob:")) {
-          window.URL.revokeObjectURL(prev);
-        }
-        return newObjectUrl;
-      });
-    } catch (err) {
-      console.error("Artwork generation failed:", err);
-      // Graceful preview fallback if upstream token unconfigured or offline
-      const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-        `${prompt.trim()}, ${QUALITY_BOOSTER}`
-      )}?width=1024&height=1024&seed=${newSeed}`;
-      setImageUrl(fallbackUrl);
-    } finally {
+    setTimeout(() => {
       setIsGenerating(false);
-    }
+    }, 200);
   };
 
-  // Generate initial artwork on mount
-  useEffect(() => {
-    generateNewArtwork();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const generateNewArtwork = handleGenerate;
 
   // PayPal Smart Buttons setup
   useEffect(() => {
@@ -261,7 +235,7 @@ export default function ForgeAgentMerchant() {
                 className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
               />
               <button
-                onClick={generateNewArtwork}
+                onClick={handleGenerate}
                 disabled={isGenerating || !prompt.trim()}
                 className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition shrink-0"
               >
