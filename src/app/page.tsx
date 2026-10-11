@@ -216,7 +216,14 @@ export default function ForgeAgentMerchant() {
       // Fallback: Direct blob fetch - NEVER redirect to external payment page
       try {
         setDownloadStatus("Downloading master asset via direct blob...");
-        const res = await fetch(masterUrl);
+        let res = await fetch(masterUrl).catch(() => null);
+        if (!res || !res.ok) {
+          res = await fetch(
+            `/api/image-proxy?prompt=${encodeURIComponent(
+              activePrompt
+            )}&seed=${currentSeed}&aspect=${aspectRatio}`
+          );
+        }
         if (!res.ok) throw new Error(`Blob fetch failed: ${res.status}`);
         const fetchedBlob = await res.blob();
         const fallbackUrl = window.URL.createObjectURL(fetchedBlob);
