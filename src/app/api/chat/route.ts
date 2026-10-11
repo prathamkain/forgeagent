@@ -39,7 +39,7 @@ export async function POST(req: Request) {
             ? `Masterpiece digital art of ${message.trim()}, cinematic lighting, 8k resolution, octane render, detailed composition`
             : "Masterpiece digital art, futuristic cyberpunk cinematic concept, octane render, 8k resolution";
         const imagePrompt = promptString;
-        const previewImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptString)}?width=600&height=400&nologo=true&seed=${Date.now()}`;
+        const previewImageUrl = `/api/image-proxy?prompt=${encodeURIComponent(imagePrompt || message)}`;
 
         // Query Channel3 market price intelligence
         const marketIntelligence = await getMarketPriceEstimate(message);
@@ -151,7 +151,7 @@ Strict Rules:
 
     const imagePrompt = isPreview ? promptString : undefined;
     const previewImageUrl = isPreview
-      ? `https://image.pollinations.ai/prompt/${encodeURIComponent(promptString)}?width=600&height=400&nologo=true&seed=${Date.now()}`
+      ? `/api/image-proxy?prompt=${encodeURIComponent(imagePrompt || message)}`
       : undefined;
 
     // Fetch Channel3 market price intelligence when a design/preview is requested

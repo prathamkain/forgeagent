@@ -60,28 +60,18 @@ function PreviewCard({
       </div>
 
       {/* Visual Canvas Area */}
-      <div className="relative aspect-[3/2] w-full overflow-hidden bg-neutral-900 flex items-center justify-center">
+      <div className="relative w-full h-[400px] overflow-hidden rounded-lg bg-zinc-900 border border-zinc-800">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={
-            previewImageUrl ||
-            `https://image.pollinations.ai/prompt/cyberpunk%20concept%20art?width=600&height=400&nologo=true`
-          }
-          alt="Draft Preview"
-          className="w-full h-[400px] object-cover rounded-lg"
-          loading="eager"
-          onError={(e) => {
-            // Fallback if network or prompt encoding fails
-            (e.target as HTMLImageElement).src =
-              "https://image.pollinations.ai/prompt/futuristic%20digital%20concept%20art?width=600&height=400&nologo=true";
-          }}
+          src={previewImageUrl || "/api/image-proxy?prompt=cyberpunk+concept+art"}
+          alt="Generated Concept Preview"
+          className="w-full h-full object-cover"
         />
-
-        {/* Diagonal Watermark Banner Overlay */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px] opacity-80">
-          <span className="rotate-[-18deg] select-none rounded border border-white/20 bg-black/40 px-4 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white/90 shadow-2xl backdrop-blur-[1px]">
+        {/* Transparent Draft Watermark Banner */}
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+          <div className="rotate-[-20deg] px-6 py-2 bg-black/50 backdrop-blur-[2px] border border-white/20 text-white font-mono text-xs tracking-widest uppercase shadow-2xl">
             FORGEAGENT // WATERMARKED DRAFT
-          </span>
+          </div>
         </div>
       </div>
 
