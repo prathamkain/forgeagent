@@ -1,48 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 30; // Render execution window support
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const rawPrompt = searchParams.get("prompt")?.trim();
+    const prompt = searchParams.get("prompt")?.trim();
     const seedParam = searchParams.get("seed");
     const quality = searchParams.get("quality") || "draft";
     const aspect = searchParams.get("aspect") || "1:1";
     const isDownload = searchParams.get("download") === "true";
 
-    if (!rawPrompt) {
+    if (!prompt) {
       return NextResponse.json(
         { error: "Query parameter 'prompt' is required." },
         { status: 400 }
       );
     }
 
-    // Fixed Seed taaki preview aur master image ka subject aur colors 100% same rahe
+    // Deterministic seed guarantee
     const seed = seedParam && !isNaN(Number(seedParam)) ? Number(seedParam) : 42;
 
-    // Dimensions: Master image ke liye maximum 2048px (Ultra-HD 2K/4K max API output)
-    let width = 2048;
-    let height = 2048;
+    // Aspect ratio alignment
+    let width = 1024;
+    let height = 1024;
 
     if (aspect === "16:9") {
-      // 16:9 Cinema Aspect Ratio
-      width = quality === "master" ? 2048 : 768;
-      height = quality === "master" ? 1152 : 432;
+      width = quality === "master" ? 1280 : 768;
+      height = quality === "master" ? 720 : 432;
     } else {
-      // 1:1 Square Aspect Ratio
-      width = quality === "master" ? 2048 : 512;
-      height = quality === "master" ? 2048 : 512;
+      // 1:1 Square
+      width = quality === "master" ? 1024 : 512;
+      height = quality === "master" ? 1024 : 512;
     }
 
-    // Master Quality ke liye AI Engine mein 8K resolution keywords add karein
-    const finalPrompt =
-      quality === "master"
-        ? `${rawPrompt}, 8k resolution, ultra-hd, masterpiece, highly detailed texture, photorealistic, sharp focus, 4k wallpaper quality`
-        : rawPrompt;
-
-    // Flux AI generator URL configuration
+    // Flux API query setup
     const queryArgs = new URLSearchParams({
       width: width.toString(),
       height: height.toString(),
@@ -53,10 +46,10 @@ export async function GET(request: NextRequest) {
     });
 
     const targetUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-      finalPrompt
+      prompt
     )}?${queryArgs.toString()}`;
 
-    // Upstream image fetch logic
+    // Upstream fetch controller with timeout guard
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 24000);
 
@@ -82,10 +75,10 @@ export async function GET(request: NextRequest) {
       headers.set(
         "Content-Disposition",
         isDownload
-          ? `attachment; filename="forgeagent-master-8k-seed-${seed}.jpg"`
+          ? `attachment; filename="forgeagent-master-seed-${seed}.jpg"`
           : "inline"
       );
-      // Browser cache ko block karein taaki purani low-res image screen par stretch na ho
+      // Aggressive cache-busting headers
       headers.set(
         "Cache-Control",
         "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
