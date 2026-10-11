@@ -28,7 +28,8 @@ function enhancePromptAnatomy(prompt: string): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { message, history } = body;
+    const { message, history, seed } = body;
+    const clientSeed = seed || "42";
 
     if (!message || typeof message !== "string") {
       return NextResponse.json(
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
           `Masterpiece digital art of ${rawPrompt}`
         );
         const imagePrompt = promptString;
-        const previewImageUrl = `/api/image-proxy?prompt=${encodeURIComponent(imagePrompt)}`;
+        const previewImageUrl = `/api/image-proxy?prompt=${encodeURIComponent(imagePrompt)}&seed=${clientSeed}&quality=draft`;
 
         // Query Channel3 market price intelligence
         const marketIntelligence = await getMarketPriceEstimate(message);
@@ -187,7 +188,7 @@ Strict Rules:
     const promptString = enhancePromptAnatomy(rawPrompt);
     const imagePrompt = isPreview ? promptString : undefined;
     const previewImageUrl = isPreview
-      ? `/api/image-proxy?prompt=${encodeURIComponent(promptString)}`
+      ? `/api/image-proxy?prompt=${encodeURIComponent(promptString)}&seed=${clientSeed}&quality=draft`
       : undefined;
 
     // Fetch Channel3 market price intelligence when a design/preview is requested
@@ -205,6 +206,7 @@ Strict Rules:
       imagePrompt,
       previewImageUrl,
       previewUrl: previewImageUrl,
+      seed: clientSeed,
       marketIntelligence,
     });
   } catch (error) {

@@ -5,10 +5,14 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const prompt = searchParams.get("prompt") || "cyberpunk concept art";
+  const seed = searchParams.get("seed") || "42";
+  const quality = searchParams.get("quality");
+  const width = searchParams.get("width") || (quality === "master" ? "1024" : "800");
+  const height = searchParams.get("height") || (quality === "master" ? "768" : "500");
 
   // Direct Pollinations URL with prompt encoding
   const safePrompt = encodeURIComponent(prompt.trim());
-  const targetUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=800&height=500&model=flux&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
+  const targetUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=${width}&height=${height}&model=flux&seed=${seed}&nologo=true`;
 
   try {
     const controller = new AbortController();

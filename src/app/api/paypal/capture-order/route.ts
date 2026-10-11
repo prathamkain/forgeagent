@@ -5,7 +5,8 @@ import prisma from "@/lib/db";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { orderID, imagePrompt, previewUrl, sessionId } = body;
+    const { orderID, imagePrompt, previewUrl, sessionId, seed } = body;
+    const clientSeed = seed || "42";
 
     if (!orderID || typeof orderID !== "string") {
       return NextResponse.json(
@@ -22,8 +23,7 @@ export async function POST(req: Request) {
       imagePrompt || "Bespoke digital artwork with futuristic cinematic lighting";
     const enhancedPrompt = `Cinematic, shot on Canon EOS R5, photorealistic, 8k resolution: ${basePrompt}`;
 
-    let finalImageUrl =
-      "https://via.placeholder.com/1024x1024/111111/44FF44?text=Final+4K+Masterpiece";
+    let finalImageUrl = `/api/image-proxy?prompt=${encodeURIComponent(basePrompt)}&seed=${clientSeed}&quality=master`;
 
     // 3. Call OpenAI DALL-E 3 API
     const apiKey = process.env.OPENAI_API_KEY;

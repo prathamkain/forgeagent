@@ -14,22 +14,30 @@ interface Message {
   finalImageUrl?: string;
   isPaid?: boolean;
   marketIntelligence?: MarketPriceEstimate;
+  seed?: number;
 }
 
 function PreviewCard({
   previewUrl,
   previewImageUrl: propPreviewImageUrl,
   imagePrompt,
+  seed = 123456,
   isPaid,
   onUnlock,
 }: {
   previewUrl?: string;
   previewImageUrl?: string;
   imagePrompt?: string;
+  seed?: number;
   isPaid?: boolean;
   onUnlock?: () => void;
 }) {
-  const previewImageUrl = propPreviewImageUrl || previewUrl;
+  const currentPrompt = imagePrompt || "cyberpunk concept art";
+  const draftUrl =
+    propPreviewImageUrl ||
+    previewUrl ||
+    `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${seed}&quality=draft`;
+  const masterUrl = `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${seed}&quality=master`;
   const [showPrompt, setShowPrompt] = useState(false);
 
   return (
@@ -65,7 +73,7 @@ function PreviewCard({
       <div className="relative w-full h-[400px] overflow-hidden rounded-lg bg-zinc-900 border border-zinc-800">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={previewImageUrl || "/api/image-proxy?prompt=cyberpunk+concept+art"}
+          src={draftUrl}
           alt="Generated Concept Preview"
           className="w-full h-full object-cover"
         />
@@ -158,7 +166,7 @@ function PreviewCard({
             </span>
           </div>
           <a
-            href={previewImageUrl || "/api/image-proxy?prompt=cyberpunk+concept+art"}
+            href={masterUrl}
             target="_blank"
             rel="noopener noreferrer"
             download="ForgeAgent-Masterpiece.jpg"
@@ -275,6 +283,7 @@ export default function ChatPage() {
   const [isPaid, setIsPaid] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [activeCheckoutMsgIndex, setActiveCheckoutMsgIndex] = useState<number | null>(null);
+  const [currentSeed, setCurrentSeed] = useState<number>(123456);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -291,6 +300,9 @@ export default function ChatPage() {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
 
+    const newSeed = Math.floor(Math.random() * 10000000);
+    setCurrentSeed(newSeed);
+
     const userMessage: Message = { role: "user", content: trimmed };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
@@ -302,6 +314,7 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: trimmed,
+          seed: newSeed,
           history: messages.slice(-6).map((m) => ({
             role: m.role,
             content: m.content,
@@ -320,16 +333,20 @@ export default function ChatPage() {
         data.message ||
         "I can definitely design that for you! Give me a second to process the vibe...";
 
-      const dynamicPreview = data.previewImageUrl || data.previewUrl;
+      const currentPrompt = data.imagePrompt || (data.type === "preview" ? trimmed : undefined);
+      const draftUrl = currentPrompt
+        ? `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${newSeed}&quality=draft`
+        : undefined;
 
       setMessages((prev) => [
         ...prev,
         {
           role: "agent",
           content: replyText,
-          previewUrl: dynamicPreview,
-          previewImageUrl: dynamicPreview,
-          imagePrompt: data.imagePrompt,
+          previewUrl: draftUrl,
+          previewImageUrl: draftUrl,
+          imagePrompt: currentPrompt,
+          seed: newSeed,
           isPaid: false,
           marketIntelligence: data.marketIntelligence,
         },
@@ -360,10 +377,8 @@ export default function ChatPage() {
     const currentPrompt =
       currentMsg?.imagePrompt || "Generated Asset";
     const dealPrice = 4.99;
-    const finalImage =
-      currentMsg?.previewImageUrl ||
-      currentMsg?.previewUrl ||
-      "https://via.placeholder.com/1024x1024/111111/44FF44?text=Final+4K+Masterpiece";
+    const seedToUse = currentMsg?.seed || currentSeed;
+    const finalImage = `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${seedToUse}&quality=master`;
 
     // Simulate successful checkout for demo/hackathon review
     setIsPaid(true);
@@ -576,6 +591,7 @@ export default function ChatPage() {
                           previewUrl={msg.previewUrl}
                           previewImageUrl={msg.previewImageUrl}
                           imagePrompt={msg.imagePrompt}
+                          seed={msg.seed || currentSeed}
                           isPaid={msg.isPaid || isPaid}
                           onUnlock={() => {
                             setActiveCheckoutMsgIndex(index);
@@ -913,9 +929,10 @@ export default function ChatPage() {
                     activeCheckoutMsgIndex !== null
                       ? messages[activeCheckoutMsgIndex]
                       : null;
-
-                  let finalImage =
-                    "https://via.placeholder.com/1024x1024/111111/44FF44?text=Final+4K+Masterpiece";
+                  const currentPrompt =
+                    currentMsg?.imagePrompt || "Generated Asset";
+                  const seedToUse = currentMsg?.seed || currentSeed;
+                  let finalImage = `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${seedToUse}&quality=master`;
 
                   if (currentMsg) {
                     try {
@@ -927,6 +944,7 @@ export default function ChatPage() {
                           body: JSON.stringify({
                             orderID: data.orderID,
                             imagePrompt: currentMsg.imagePrompt,
+                            seed: seedToUse,
                             previewUrl:
                               currentMsg.previewImageUrl ||
                               currentMsg.previewUrl,
@@ -991,10 +1009,8 @@ export default function ChatPage() {
                     const currentPrompt =
                       currentMsg?.imagePrompt || "Generated Asset";
                     const dealPrice = 4.99;
-                    const finalImage =
-                      currentMsg?.previewImageUrl ||
-                      currentMsg?.previewUrl ||
-                      "https://via.placeholder.com/1024x1024/111111/44FF44?text=Final+4K+Masterpiece";
+                    const seedToUse = currentMsg?.seed || currentSeed;
+                    const finalImage = `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${seedToUse}&quality=master`;
 
                     setIsPaid(true);
                     setShowCheckoutModal(false);
