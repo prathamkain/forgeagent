@@ -46,3 +46,42 @@ export async function GET() {
     });
   }
 }
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { orderId, prompt, amount, status, sessionId } = body;
+
+    const sessionConnectOrCreate = sessionId
+      ? {
+          connectOrCreate: {
+            where: { id: sessionId },
+            create: { id: sessionId },
+          },
+        }
+      : {
+          create: {},
+        };
+
+    try {
+      const newOrder = await prisma.productOrder.create({
+        data: {
+          paypalOrderId: orderId || `SANDBOX-${Date.now()}`,
+          status: status || "COMPLETED",
+          price: typeof amount === "number" ? amount : 4.99,
+          promptSpec: prompt || "Bespoke digital artwork",
+          finalImageUrl:
+            "https://via.placeholder.com/1024x1024/111111/44FF44?text=Final+4K+Masterpiece",
+          session: sessionConnectOrCreate,
+        },
+      });
+      return NextResponse.json({ success: true, order: newOrder });
+    } catch (dbErr) {
+      console.warn("DB save simulated order fallback:", dbErr);
+      return NextResponse.json({ success: true, simulated: true });
+    }
+  } catch (err) {
+    console.warn("Simulated order parse error:", err);
+    return NextResponse.json({ success: true, simulated: true });
+  }
+}
