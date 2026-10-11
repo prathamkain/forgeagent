@@ -1,7 +1,14 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Script from "next/script";
+import {
+  ASPECTS,
+  AspectKey,
+  buildImageCandidates,
+  randomSeed,
+  sanitizePrompt,
+} from "../lib/forgeImage";
 
 declare global {
   interface Window {
@@ -37,32 +44,68 @@ declare global {
   }
 }
 
+const DEFAULT_PROMPT =
+  "Cyberpunk neon street merchant android, cinematic volumetric lighting, 8k render";
+
 export default function ForgeAgentMerchant() {
-  const [prompt, setPrompt] = useState<string>(
-    "Cyberpunk neon street merchant android, cinematic volumetric lighting, 8k render"
-  );
-  const [activePrompt, setActivePrompt] = useState<string>(
-    "Cyberpunk neon street merchant android, cinematic volumetric lighting, 8k render"
+  const [prompt, setPrompt] = useState<string>(DEFAULT_PROMPT);
+  const [selectedAspect, setSelectedAspect] = useState<AspectKey>("1:1");
+
+  // Locked parameters (seeded upon submit)
+  const [lockedPrompt, setLockedPrompt] = useState<string>(
+    sanitizePrompt(DEFAULT_PROMPT)
   );
   const [currentSeed, setCurrentSeed] = useState<number>(7439769);
-  const [aspectRatio, setAspectRatio] = useState<"1:1" | "16:9">("1:1");
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [imageUrl, setImageUrl] = useState<string>(
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(
-      "Cyberpunk neon street merchant android, cinematic volumetric lighting, 8k render, hyper-detailed, sharp focus, 8k resolution, masterpiece, cinematic"
-    )}?width=1024&height=1024&seed=7439769`
+  const [lockedAspect, setLockedAspect] = useState<AspectKey>("1:1");
+
+  // Flow and UI states
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    "loading"
   );
+  const [displaySrc, setDisplaySrc] = useState<string | null>(null);
+  const [statusNote, setStatusNote] = useState<string>("");
+  const [runId, setRunId] = useState<number>(1);
+
   const [isPaid, setIsPaid] = useState<boolean>(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [unlockToken, setUnlockToken] = useState<string | null>(null);
+  const [unlockError, setUnlockError] = useState<string>("");
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadStatus, setDownloadStatus] = useState<string>("");
+  const [downloadError, setDownloadError] = useState<string>("");
   const [paypalReady, setPaypalReady] = useState<boolean>(false);
   const paypalContainerRef = useRef<HTMLDivElement>(null);
-  const imageElementRef = useRef<HTMLImageElement>(null);
 
-  // Quality Booster String
-  const QUALITY_BOOSTER =
-    "8k resolution, highly detailed, sharp focus, cinematic volumetric lighting, photorealistic, octane render, masterpiece, intricate details";
+  const lockedPromptRef = useRef(lockedPrompt);
+  lockedPromptRef.current = lockedPrompt;
+  const currentSeedRef = useRef(currentSeed);
+  currentSeedRef.current = currentSeed;
+  const lockedAspectRef = useRef(lockedAspect);
+  lockedAspectRef.current = lockedAspect;
+
+  const unlockAsset = async (orderId: string) => {
+    setUnlockError("");
+    try {
+      const res = await fetch("/api/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          prompt: lockedPromptRef.current,
+          seed: currentSeedRef.current,
+          aspect: lockedAspectRef.current,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.token) throw new Error(data.error || "Unlock failed");
+      setUnlockToken(data.token);
+      setTransactionId(orderId);
+      setIsPaid(true); // ONLY set paid after the server confirmed
+    } catch (err) {
+      console.error(err);
+      setUnlockError("Payment could not be verified. Please try again.");
+    }
+  };
 
   // Check when window.paypal is loaded and ready
   useEffect(() => {
@@ -81,34 +124,96 @@ export default function ForgeAgentMerchant() {
     return () => clearInterval(interval);
   }, []);
 
+  // Candidate generation URLs
+  const candidates = useMemo(
+    () =>
+      currentSeed === null || !lockedPrompt
+        ? []
+        : buildImageCandidates(lockedPrompt, currentSeed, lockedAspect),
+    [currentSeed, lockedPrompt, lockedAspect]
+  );
+
+  // Preview loader effect
+  useEffect(() => {
+    if (!candidates.length) return;
+    let cancelled = false;
+    let bestEffort: string | null = null;
+    setStatus("loading");
+    setDisplaySrc(null);
+
+    const tryLoad = (i: number) => {
+      if (cancelled) return;
+      if (i >= candidates.length) {
+        if (bestEffort) {
+          setDisplaySrc(bestEffort);
+          setStatus("ready");
+          setStatusNote("");
+        } else {
+          setStatus("error");
+          setStatusNote("Render nodes are busy. Please retry.");
+        }
+        return;
+      }
+      setStatusNote(
+        i === 0
+          ? "Forging your artwork…"
+          : `Switching render node (${i + 1}/${candidates.length})…`
+      );
+      const img = new window.Image();
+      let settled = false;
+      const next = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        img.onload = null;
+        img.onerror = null;
+        tryLoad(i + 1);
+      };
+      const timer = setTimeout(next, 45_000);
+      img.onload = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (cancelled) return;
+        if (Math.max(img.naturalWidth, img.naturalHeight) < 768) {
+          bestEffort = bestEffort ?? candidates[i].url;
+          tryLoad(i + 1);
+          return;
+        }
+        setDisplaySrc(candidates[i].url);
+        setStatus("ready");
+        setStatusNote("");
+      };
+      img.onerror = next;
+      img.referrerPolicy = "no-referrer";
+      img.src = candidates[i].url;
+    };
+
+    tryLoad(0);
+    return () => {
+      cancelled = true;
+    };
+  }, [candidates, runId]);
+
+  // Seed lock: on prompt submit ONLY
   const handleGenerate = () => {
-    if (!prompt.trim()) return;
-    setIsGenerating(true);
+    if (!prompt.trim() || status === "loading") return;
+    const newSeed = randomSeed();
+    setCurrentSeed(newSeed);
+    setLockedPrompt(sanitizePrompt(prompt));
+    setLockedAspect(selectedAspect);
     setIsPaid(false);
     setTransactionId(null);
-
-    // Fixed deterministic seed lock
-    const newSeed = Math.floor(Math.random() * 9000000) + 1000000;
-    setCurrentSeed(newSeed);
-    setActivePrompt(prompt.trim());
-
-    // Instant direct high-quality URL without external API timeouts
-    const newUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-      prompt.trim() + ', hyper-detailed, sharp focus, 8k resolution, masterpiece, cinematic'
-    )}?width=1024&height=1024&seed=${newSeed}`;
-
-    setImageUrl(newUrl);
-
-    setTimeout(() => {
-      setIsGenerating(false);
-    }, 200);
+    setUnlockToken(null);
+    setUnlockError("");
+    setDownloadError("");
+    setRunId((n) => n + 1);
   };
 
-  const generateNewArtwork = handleGenerate;
-
-  // PayPal Smart Buttons setup
+  // PayPal Smart Buttons setup (runs when ready & unpaid)
   useEffect(() => {
-    if (isPaid || !paypalContainerRef.current || isGenerating || !paypalReady) return;
+    if (isPaid || !paypalContainerRef.current || status !== "ready" || !paypalReady)
+      return;
 
     if (window.paypal) {
       paypalContainerRef.current.innerHTML = "";
@@ -135,8 +240,7 @@ export default function ForgeAgentMerchant() {
           },
           onApprove: async (_data, actions) => {
             const details = await actions.order.capture();
-            setTransactionId(details.id || `TXN-${Date.now()}`);
-            setIsPaid(true);
+            await unlockAsset(details.id);
           },
           onError: (err) => {
             console.error("PayPal Error:", err);
@@ -144,53 +248,53 @@ export default function ForgeAgentMerchant() {
         })
         .render(paypalContainerRef.current);
     }
-  }, [paypalReady, currentSeed, isPaid, isGenerating]);
+  }, [paypalReady, currentSeed, lockedPrompt, lockedAspect, isPaid, status]);
 
-  // Master asset downloader calling /api/download-master?prompt={prompt}&seed={seed}
+  // Master asset downloader calling /api/download-master
   const handleDownloadMaster = async () => {
     try {
       setIsDownloading(true);
-      setDownloadStatus("Fetching master commercial asset from pipeline...");
+      setDownloadStatus("Preparing master file…");
+      setDownloadError("");
 
-      const downloadUrl = `/api/download-master?prompt=${encodeURIComponent(
-        activePrompt
-      )}&seed=${currentSeed}`;
+      const query = new URLSearchParams({
+        prompt: lockedPrompt,
+        seed: String(currentSeed),
+        aspect: lockedAspect,
+      }).toString();
 
-      const res = await fetch(downloadUrl);
+      const res = await fetch(`/api/download-master?${query}`, {
+        headers: { "x-unlock-token": unlockToken ?? "" },
+      });
       if (!res.ok) {
-        throw new Error(`Master download failed: ${res.status}`);
+        if (res.status === 402 || res.status === 403) {
+          throw new Error("Please unlock again");
+        }
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(
+          errorJson.error || errorJson.detail || `Server error: ${res.status}`
+        );
       }
+
+      const contentType = res.headers.get("content-type") ?? "";
+      const ext = contentType.includes("png")
+        ? "png"
+        : contentType.includes("webp")
+        ? "webp"
+        : "jpg";
 
       const blob = await res.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = blobUrl;
-      anchor.download = `forgeagent-master-seed-${currentSeed}.jpg`;
+      anchor.download = `forgeagent-master-4k-${currentSeed}.png`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      console.warn("Direct /api/download-master error, fallback initiated:", err);
-      try {
-        setDownloadStatus("Downloading via fallback pipeline...");
-        const fallbackUrl = `/api/image-proxy?prompt=${encodeURIComponent(
-          activePrompt
-        )}&seed=${currentSeed}&aspect=${aspectRatio}`;
-        const fallbackRes = await fetch(fallbackUrl);
-        if (!fallbackRes.ok) throw new Error("Fallback failed");
-        const fallbackBlob = await fallbackRes.blob();
-        const fallbackBlobUrl = window.URL.createObjectURL(fallbackBlob);
-        const anchor = document.createElement("a");
-        anchor.href = fallbackBlobUrl;
-        anchor.download = `forgeagent-master-seed-${currentSeed}.jpg`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        window.URL.revokeObjectURL(fallbackBlobUrl);
-      } catch (fallbackErr) {
-        console.error("Master download completely failed:", fallbackErr);
-      }
+    } catch (err: any) {
+      console.error("Master download error:", err);
+      setDownloadError(err.message || "Download failed. Please retry.");
     } finally {
       setIsDownloading(false);
       setDownloadStatus("");
@@ -236,10 +340,10 @@ export default function ForgeAgentMerchant() {
               />
               <button
                 onClick={handleGenerate}
-                disabled={isGenerating || !prompt.trim()}
+                disabled={status === "loading" || !prompt.trim()}
                 className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition shrink-0"
               >
-                {isGenerating ? "Forging..." : "Generate Concept"}
+                {status === "loading" ? "Forging..." : "Generate Concept"}
               </button>
             </div>
 
@@ -248,21 +352,23 @@ export default function ForgeAgentMerchant() {
                 <span>Aspect:</span>
                 <button
                   type="button"
-                  onClick={() => setAspectRatio("1:1")}
-                  className={`px-2 py-0.5 rounded ${aspectRatio === "1:1"
-                    ? "bg-slate-700 text-white font-medium"
-                    : "hover:text-white"
-                    }`}
+                  onClick={() => setSelectedAspect("1:1")}
+                  className={`px-2 py-0.5 rounded ${
+                    selectedAspect === "1:1"
+                      ? "bg-slate-700 text-white font-medium"
+                      : "hover:text-white"
+                  }`}
                 >
                   1:1
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAspectRatio("16:9")}
-                  className={`px-2 py-0.5 rounded ${aspectRatio === "16:9"
-                    ? "bg-slate-700 text-white font-medium"
-                    : "hover:text-white"
-                    }`}
+                  onClick={() => setSelectedAspect("16:9")}
+                  className={`px-2 py-0.5 rounded ${
+                    selectedAspect === "16:9"
+                      ? "bg-slate-700 text-white font-medium"
+                      : "hover:text-white"
+                  }`}
                 >
                   16:9
                 </button>
@@ -279,32 +385,48 @@ export default function ForgeAgentMerchant() {
 
         {/* Artwork Canvas Frame */}
         <div className="max-w-2xl w-full flex flex-col items-center">
-          <div className="relative w-full aspect-square max-w-2xl rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 shadow-2xl flex items-center justify-center">
-            {/* Native Image Display */}
-            {isGenerating ? (
-              <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
+          <div
+            className="relative w-full max-w-2xl rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 shadow-2xl flex items-center justify-center"
+            style={{ aspectRatio: ASPECTS[lockedAspect].css }}
+          >
+            {status === "loading" && (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3 z-10">
                 <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
                 <span className="text-xs font-semibold tracking-wide uppercase text-indigo-400">
-                  Forging Autonomous Asset...
+                  {statusNote || "Forging your artwork…"}
                 </span>
               </div>
-            ) : imageUrl ? (
+            )}
+
+            {status === "error" && (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3 z-10 p-4 text-center">
+                <span className="text-sm text-red-400 font-medium">
+                  {statusNote || "Render nodes are busy. Please retry."}
+                </span>
+                <button
+                  onClick={() => setRunId((n) => n + 1)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+                >
+                  Retry Render
+                </button>
+              </div>
+            )}
+
+            {displaySrc && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                ref={imageElementRef}
-                crossOrigin="anonymous"
-                src={imageUrl}
+                src={displaySrc}
                 alt="ForgeAgent Asset"
-                key={`asset-${currentSeed}-${isPaid ? "paid" : "unpaid"}`}
-                className="w-full h-full object-contain select-none transition-all duration-300"
+                className="absolute inset-0 h-full w-full object-cover select-none"
+                draggable={false}
+                referrerPolicy="no-referrer"
+                onContextMenu={!isPaid ? (e) => e.preventDefault() : undefined}
               />
-            ) : (
-              <div className="text-slate-500 text-sm">No artwork generated</div>
             )}
 
             {/* Red Diagonal Watermark (Unpaid Only) */}
-            {!isPaid && imageUrl && !isGenerating && (
-              <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center">
+            {!isPaid && displaySrc && status === "ready" && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center z-10">
                 <div className="absolute inset-0 bg-repeat [background-image:repeating-linear-gradient(45deg,rgba(0,0,0,0.15)_0,rgba(0,0,0,0.15)_20px,transparent_20px,transparent_40px)]" />
                 <div className="rotate-[-25deg] bg-red-600/90 text-white font-black tracking-widest text-sm sm:text-base uppercase py-3 px-16 shadow-2xl border-y-2 border-white/30 text-center select-none backdrop-blur-xs">
                   FORGEAGENT WATERMARKED PREVIEW
@@ -334,7 +456,7 @@ export default function ForgeAgentMerchant() {
                   </div>
                 </div>
                 <div className="px-3 py-1 bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold rounded-full border border-emerald-500/30">
-                  Resolution: 1024x1024 Master Asset
+                  Resolution: {ASPECTS[lockedAspect].width}x{ASPECTS[lockedAspect].height} Master Asset
                 </div>
               </div>
 
@@ -345,10 +467,15 @@ export default function ForgeAgentMerchant() {
                 className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-bold rounded-xl shadow-xl shadow-emerald-950/40 transition flex items-center justify-center gap-3 text-base sm:text-lg"
               >
                 {isDownloading ? (
-                  <span>{downloadStatus || "Downloading Master Asset..."}</span>
+                  <span>{downloadStatus || "Preparing master file…"}</span>
                 ) : (
                   <>
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg
+                      className="w-6 h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -356,15 +483,25 @@ export default function ForgeAgentMerchant() {
                         d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                       />
                     </svg>
-                    <span>Download Commercial Master Asset (.JPG)</span>
+                    <span>Download Commercial Master Asset</span>
                   </>
                 )}
               </button>
+              <div className="text-xs text-slate-400 text-center">
+                {lockedAspect === "1:1"
+                  ? "4K master: 4096×4096 PNG"
+                  : "4K master: 3840×2160 PNG"}
+              </div>
+              {downloadError && (
+                <div className="text-xs text-red-400 font-medium text-center">
+                  {downloadError}
+                </div>
+              )}
             </div>
           )}
 
           {/* Unpaid State: PayPal Box */}
-          {!isPaid && (
+          {status === "ready" && !isPaid && (
             <div className="max-w-2xl w-full mt-6 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col items-center">
               <div className="flex items-center justify-between w-full mb-4">
                 <span className="text-sm font-semibold text-slate-300">
@@ -375,7 +512,9 @@ export default function ForgeAgentMerchant() {
 
               <div
                 ref={paypalContainerRef}
-                className={`w-full min-h-[150px] ${!paypalReady ? "flex items-center justify-center" : ""}`}
+                className={`w-full min-h-[150px] ${
+                  !paypalReady ? "flex items-center justify-center" : ""
+                }`}
               >
                 {!paypalReady && (
                   <div className="flex flex-col items-center justify-center py-6 text-slate-400 gap-2">
@@ -388,14 +527,16 @@ export default function ForgeAgentMerchant() {
               </div>
 
               <button
-                onClick={() => {
-                  setTransactionId(`SANDBOX-TEST-${Date.now()}`);
-                  setIsPaid(true);
-                }}
-                className="mt-3 text-xs text-slate-400 hover:text-slate-200 underline transition"
+                onClick={() => unlockAsset("DEMO-" + Date.now())}
+                className="mt-3 text-xs text-slate-400 hover:text-slate-200 underline transition cursor-pointer"
               >
                 [Hackathon Demo]: Instant Unlock Without PayPal Sandbox Login
               </button>
+              {unlockError && (
+                <div className="mt-2 text-xs text-red-400 font-medium text-center">
+                  {unlockError}
+                </div>
+              )}
             </div>
           )}
         </div>
