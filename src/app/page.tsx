@@ -33,11 +33,12 @@ function PreviewCard({
   onUnlock?: () => void;
 }) {
   const currentPrompt = imagePrompt || "cyberpunk concept art";
+  const currentSeed = seed;
   const draftUrl =
     propPreviewImageUrl ||
     previewUrl ||
-    `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${seed}&quality=draft`;
-  const masterUrl = `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${seed}&quality=master`;
+    `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${currentSeed}&quality=draft`;
+  const masterUrl = `/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${currentSeed}&quality=master`;
   const [showPrompt, setShowPrompt] = useState(false);
 
   return (
@@ -70,12 +71,12 @@ function PreviewCard({
       </div>
 
       {/* Visual Canvas Area */}
-      <div className="relative w-full h-[400px] overflow-hidden rounded-lg bg-zinc-900 border border-zinc-800">
+      <div className="relative w-full overflow-hidden rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={draftUrl}
+          src={isPaid ? masterUrl : draftUrl}
           alt="Generated Concept Preview"
-          className="w-full h-full object-cover"
+          className="object-contain max-h-[500px] w-full rounded-lg"
         />
         {/* Transparent Draft Watermark Banner */}
         {!isPaid && (
@@ -86,6 +87,32 @@ function PreviewCard({
           </div>
         )}
       </div>
+
+      {isPaid && (
+        <div className="mt-4 p-4 bg-emerald-950/40 border border-emerald-500/50 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-lg">
+              ✓
+            </div>
+            <div>
+              <h4 className="text-white font-semibold text-sm">Asset Unlocked & Commercial License Granted</h4>
+              <p className="text-xs text-zinc-400">Order ID: #{Date.now().toString().slice(-6)} • Full Rights</p>
+            </div>
+          </div>
+          <a
+            href={`/api/image-proxy?prompt=${encodeURIComponent(currentPrompt)}&seed=${currentSeed}&quality=master`}
+            download={`forgeagent-${Date.now()}.jpg`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Master File (HD)
+          </a>
+        </div>
+      )}
 
       {/* Prototype Footer & Action Strip */}
       <div className="relative z-10 border-t border-neutral-800/80 bg-neutral-900/80 p-3">
@@ -152,43 +179,6 @@ function PreviewCard({
           </div>
         )}
       </div>
-
-      {/* Prominent Download Unlocked Asset Button (when isPaid) */}
-      {isPaid && (
-        <div className="relative z-10 border-t border-emerald-500/30 bg-emerald-950/40 p-3 flex items-center justify-between gap-3">
-          <div className="flex flex-col">
-            <span className="text-[11px] font-mono text-emerald-400 font-semibold flex items-center gap-1.5">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
-              Full 4K Asset Unlocked
-            </span>
-            <span className="text-[10px] text-neutral-400 font-mono">
-              Lossless Master • No Watermark • Commercial License
-            </span>
-          </div>
-          <a
-            href={masterUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download="ForgeAgent-Masterpiece.jpg"
-            className="flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-3.5 py-2 text-xs font-semibold text-neutral-950 shadow-lg shadow-emerald-950/40 transition-all active:scale-95 cursor-pointer"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-              />
-            </svg>
-            <span>Download Unlocked Asset</span>
-          </a>
-        </div>
-      )}
     </div>
   );
 }
@@ -214,14 +204,14 @@ function FinalMasterpieceCard({ imageUrl }: { imageUrl: string }) {
       </div>
 
       {/* High-Res Image Display */}
-      <div className="relative aspect-square w-full overflow-hidden bg-neutral-900 flex items-center justify-center">
+      <div className="relative w-full overflow-hidden bg-neutral-900 flex items-center justify-center">
         {!hasError ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={imageUrl}
             alt="Final 4K Masterpiece"
             onError={() => setHasError(true)}
-            className="h-full w-full object-cover transition-transform duration-500 hover:scale-[1.01]"
+            className="object-contain max-h-[500px] w-full rounded-lg transition-transform duration-500 hover:scale-[1.01]"
           />
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-b from-neutral-900 to-neutral-950 p-6 text-center">
@@ -248,6 +238,30 @@ function FinalMasterpieceCard({ imageUrl }: { imageUrl: string }) {
             </p>
           </div>
         )}
+      </div>
+
+      <div className="m-3 p-4 bg-emerald-950/40 border border-emerald-500/50 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-lg">
+            ✓
+          </div>
+          <div>
+            <h4 className="text-white font-semibold text-sm">Asset Unlocked & Commercial License Granted</h4>
+            <p className="text-xs text-zinc-400">Full Rights • Lossless Master HD</p>
+          </div>
+        </div>
+        <a
+          href={imageUrl}
+          download={`forgeagent-${Date.now()}.jpg`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full sm:w-auto px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Download Master File (HD)
+        </a>
       </div>
 
       {/* Footer Info */}

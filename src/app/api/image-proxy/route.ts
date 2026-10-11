@@ -7,12 +7,13 @@ export async function GET(req: NextRequest) {
   const prompt = searchParams.get("prompt") || "cyberpunk concept art";
   const seed = searchParams.get("seed") || "42";
   const quality = searchParams.get("quality");
-  const width = searchParams.get("width") || (quality === "master" ? "1024" : "800");
-  const height = searchParams.get("height") || (quality === "master" ? "768" : "500");
+  const isMaster = quality === "master";
+  const width = searchParams.get("width") || (isMaster ? "1280" : "640");
+  const height = searchParams.get("height") || (isMaster ? "720" : "360");
 
   // Direct Pollinations URL with prompt encoding
   const safePrompt = encodeURIComponent(prompt.trim());
-  const targetUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=${width}&height=${height}&model=flux&seed=${seed}&nologo=true`;
+  const targetUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=${width}&height=${height}&model=flux&nologo=true&seed=${seed}`;
 
   try {
     const controller = new AbortController();
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
       return new NextResponse(buffer, {
         headers: {
           "Content-Type": contentType,
+          "Content-Disposition": "inline",
           "Cache-Control": "public, max-age=86400",
         },
       });
