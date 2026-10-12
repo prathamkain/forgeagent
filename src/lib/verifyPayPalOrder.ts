@@ -2,12 +2,15 @@ import { generateAccessToken } from "./paypal";
 
 const PAYPAL_API_BASE = process.env.PAYPAL_API_URL || "https://api-m.sandbox.paypal.com";
 
-export async function verifyPayPalOrderCompleted(
-  orderId: string,
-  expectedAmount?: number
-): Promise<boolean> {
+export interface PayPalVerificationResult {
+  completed: boolean;
+  paidAmount?: number;
+  currency?: string;
+}
+
+export async function verifyPayPalOrder(orderId: string): Promise<PayPalVerificationResult> {
   if (!orderId || typeof orderId !== "string") {
-    return false;
+    return { completed: false };
   }
 
   try {
@@ -22,28 +25,49 @@ export async function verifyPayPalOrderCompleted(
     });
 
     if (!response.ok) {
-      return false;
+      return { completed: false };
     }
 
     const data = (await response.json()) as {
       status?: string;
-      purchase_units?: Array<{ amount?: { value?: string } }>;
+      purchase_units?: Array<{
+        amount?: {
+          value?: string;
+          currency_code?: string;
+        };
+      }>;
     };
 
-    if (data.status !== "COMPLETED") {
-      return false;
-    }
+    const isCompleted = data.status === "COMPLETED";
+    const amountVal = parseFloat(data.purchase_units?.[0]?.amount?.value || "0");
+    const currency = data.purchase_units?.[0]?.amount?.currency_code || "";
 
-    if (typeof expectedAmount === "number" && expectedAmount > 0) {
-      const paidVal = parseFloat(data.purchase_units?.[0]?.amount?.value || "0");
-      if (paidVal < expectedAmount - 0.01) {
-        return false;
-      }
-    }
-
-    return true;
+    return {
+      completed: isCompleted,
+      paidAmount: amountVal,
+      currency,
+    };
   } catch (err) {
     console.error("[verifyPayPalOrder] error:", err);
-    return false;
+    return { completed: false };
   }
+}
+
+export async function verifyPayPalOrderCompleted(
+  orderId: string,
+  expectedAmount?: number
+): Promise<boolean> {
+  const result = await verifyPayPalOrder(orderId);
+  if (!result.completed) return false;
+
+  if (typeof expectedAmount === "number" && expectedAmount > 0) {
+    if ((result.paidAmount ?? 0) < expectedAmount - 0.01) {
+      return false;
+    }
+    if (result.currency && result.currency !== "USD") {
+      return false;
+    }
+  }
+
+  return true;
 }

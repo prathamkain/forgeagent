@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ASPECTS, AspectKey, sanitizePrompt } from "../../../lib/forgeImage";
 import { assetFingerprint, signUnlockToken, isDemoAllowed } from "../../../lib/unlockToken";
-import { verifyPayPalOrderCompleted } from "../../../lib/verifyPayPalOrder";
-import { BARGAIN_ENABLED } from "../../../lib/bargain";
+import { verifyPayPalOrder } from "../../../lib/verifyPayPalOrder";
+import { BARGAIN_ENABLED, BASE_PRICE } from "../../../lib/bargain";
 import { verifyDealToken } from "../../../lib/dealToken";
 
 export const runtime = "nodejs";
@@ -37,16 +37,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ token: signUnlockToken({ orderId, fingerprint, demo: true }) });
     }
 
-    let expectedPrice = 4.99;
+    let requiredAmount = BASE_PRICE;
     if (BARGAIN_ENABLED && typeof b.dealToken === "string" && b.dealToken.trim()) {
       const dealCheck = verifyDealToken(b.dealToken.trim(), fingerprint);
       if (dealCheck.ok) {
-        expectedPrice = dealCheck.price;
+        requiredAmount = dealCheck.price;
       }
     }
 
-    const paid = await verifyPayPalOrderCompleted(orderId, expectedPrice);
-    if (!paid) return NextResponse.json({ error: "Payment not completed" }, { status: 402 });
+    const verification = await verifyPayPalOrder(orderId);
+    if (
+      !verification.completed ||
+      typeof verification.paidAmount !== "number" ||
+      verification.paidAmount < requiredAmount - 0.01 ||
+      (verification.currency && verification.currency !== "USD")
+    ) {
+      return NextResponse.json({ error: "Payment not completed or amount mismatch" }, { status: 402 });
+    }
 
     return NextResponse.json({ token: signUnlockToken({ orderId, fingerprint, demo: false }) });
   } catch (err) {
