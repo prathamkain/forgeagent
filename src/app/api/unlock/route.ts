@@ -2,13 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { ASPECTS, AspectKey, sanitizePrompt } from "../../../lib/forgeImage";
 import { assetFingerprint, signUnlockToken, isDemoAllowed } from "../../../lib/unlockToken";
 import { verifyPayPalOrderCompleted } from "../../../lib/verifyPayPalOrder";
+import { BARGAIN_ENABLED } from "../../../lib/bargain";
+import { verifyDealToken } from "../../../lib/dealToken";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const raw: unknown = await req.json().catch(() => null);
-  const b = (raw ?? {}) as { orderId?: unknown; prompt?: unknown; seed?: unknown; aspect?: unknown };
+  const b = (raw ?? {}) as {
+    orderId?: unknown;
+    prompt?: unknown;
+    seed?: unknown;
+    aspect?: unknown;
+    dealToken?: unknown;
+  };
 
   const orderId = typeof b.orderId === "string" ? b.orderId.trim() : "";
   const prompt = sanitizePrompt(typeof b.prompt === "string" ? b.prompt : "");
@@ -29,7 +37,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ token: signUnlockToken({ orderId, fingerprint, demo: true }) });
     }
 
-    const paid = await verifyPayPalOrderCompleted(orderId);
+    let expectedPrice = 4.99;
+    if (BARGAIN_ENABLED && typeof b.dealToken === "string" && b.dealToken.trim()) {
+      const dealCheck = verifyDealToken(b.dealToken.trim(), fingerprint);
+      if (dealCheck.ok) {
+        expectedPrice = dealCheck.price;
+      }
+    }
+
+    const paid = await verifyPayPalOrderCompleted(orderId, expectedPrice);
     if (!paid) return NextResponse.json({ error: "Payment not completed" }, { status: 402 });
 
     return NextResponse.json({ token: signUnlockToken({ orderId, fingerprint, demo: false }) });

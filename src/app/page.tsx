@@ -9,6 +9,8 @@ import {
   randomSeed,
   sanitizePrompt,
 } from "../lib/forgeImage";
+import BargainPanel from "../components/BargainPanel";
+import { BARGAIN_ENABLED } from "../lib/bargain";
 
 declare global {
   interface Window {
@@ -73,6 +75,7 @@ export default function ForgeAgentMerchant() {
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadStatus, setDownloadStatus] = useState<string>("");
   const [downloadError, setDownloadError] = useState<string>("");
+  const [deal, setDeal] = useState<{ price: number; token: string } | null>(null);
   const [paypalReady, setPaypalReady] = useState<boolean>(false);
   const paypalContainerRef = useRef<HTMLDivElement>(null);
 
@@ -82,6 +85,10 @@ export default function ForgeAgentMerchant() {
   currentSeedRef.current = currentSeed;
   const lockedAspectRef = useRef(lockedAspect);
   lockedAspectRef.current = lockedAspect;
+  const dealRef = useRef(deal);
+  dealRef.current = deal;
+
+  const activePrice = deal ? deal.price : 4.99;
 
   const unlockAsset = async (orderId: string) => {
     setUnlockError("");
@@ -94,6 +101,7 @@ export default function ForgeAgentMerchant() {
           prompt: lockedPromptRef.current,
           seed: currentSeedRef.current,
           aspect: lockedAspectRef.current,
+          dealToken: dealRef.current?.token,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -206,6 +214,7 @@ export default function ForgeAgentMerchant() {
     setTransactionId(null);
     setUnlockToken(null);
     setUnlockError("");
+    setDeal(null);
     setDownloadError("");
     setRunId((n) => n + 1);
   };
@@ -232,7 +241,7 @@ export default function ForgeAgentMerchant() {
                   description: `ForgeAgent 4K Commercial Master Asset (Seed #${currentSeed})`,
                   amount: {
                     currency_code: "USD",
-                    value: "4.99",
+                    value: activePrice.toFixed(2),
                   },
                 },
               ],
@@ -248,7 +257,7 @@ export default function ForgeAgentMerchant() {
         })
         .render(paypalContainerRef.current);
     }
-  }, [paypalReady, currentSeed, lockedPrompt, lockedAspect, isPaid, status]);
+  }, [paypalReady, currentSeed, lockedPrompt, lockedAspect, activePrice, isPaid, status]);
 
   // Master asset downloader calling /api/download-master
   const handleDownloadMaster = async () => {
@@ -507,8 +516,31 @@ export default function ForgeAgentMerchant() {
                 <span className="text-sm font-semibold text-slate-300">
                   Full Commercial License & Master Asset
                 </span>
-                <span className="text-lg font-bold text-emerald-400">$4.99 USD</span>
+                <span className="text-lg font-bold text-emerald-400">
+                  {deal ? (
+                    <span className="flex items-center gap-2">
+                      <span className="line-through text-slate-500 text-sm font-normal">$4.99</span>
+                      <span>${activePrice.toFixed(2)} USD</span>
+                    </span>
+                  ) : (
+                    <span>$4.99 USD</span>
+                  )}
+                </span>
               </div>
+
+              {BARGAIN_ENABLED && (
+                <div className="w-full mb-4">
+                  <BargainPanel
+                    prompt={lockedPrompt}
+                    seed={currentSeed}
+                    aspect={lockedAspect}
+                    currentPrice={activePrice}
+                    deal={deal}
+                    onDealAccepted={(d) => setDeal(d)}
+                    onResetDeal={() => setDeal(null)}
+                  />
+                </div>
+              )}
 
               <div
                 ref={paypalContainerRef}
